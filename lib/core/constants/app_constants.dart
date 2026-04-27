@@ -17,6 +17,8 @@ class ApiEndpoints {
   // Onboarding
   static const String onboardingStatus = '/onboarding/status';
   static const String onboardingHobbies = '/onboarding/hobbies';
+  static const String onboardingPhoto = '/onboarding/photo';
+  static const String onboarding = '/onboarding';
   static String onboardingStep(int step) => '/onboarding/step/$step';
 
   // Profile
@@ -44,6 +46,7 @@ class ApiEndpoints {
   static const String report = '/trust/report';
   static const String block = '/trust/block';
   static const String videoSelfie = '/trust/video-selfie';
+  static const String verifyIdentity = '/trust/verify-identity';
 
   // Subscriptions
   static const String plans = '/subscriptions/plans';

@@ -16,6 +16,7 @@ import 'features/interests/bloc/interests_bloc.dart';
 import 'features/profile/bloc/profile_bloc.dart';
 import 'features/chat/bloc/chat_bloc.dart';
 import 'features/subscriptions/bloc/subscription_bloc.dart';
+import 'firebase_options.dart';
 
 // Background message handler
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
@@ -26,8 +27,10 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // Initialize Firebase
-  await Firebase.initializeApp();
-  FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  ); 
+   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
 
   // Initialize DI
   di.init();

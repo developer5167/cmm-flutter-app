@@ -112,12 +112,10 @@ class _PhoneInputScreenState extends State<PhoneInputScreen> {
                   
                   const SizedBox(height: 16),
                   
-                  // Continue Button
                   AppButton(
                     label: 'Continue',
-                    isEnabled: _isValid,
                     isLoading: isLoading,
-                    onPressed: _onContinue,
+                    onPressed: _isValid ? _onContinue : null,
                   ).animate().fadeIn(delay: 400.ms, duration: 400.ms).slideY(begin: 0.2),
                   
                   const SizedBox(height: 16),

@@ -190,12 +190,10 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                   
                   const Spacer(),
                   
-                  // Verify Button
                   AppButton(
                     label: 'Verify',
                     isLoading: isLoading,
-                    isEnabled: pinputController.text.length == 6,
-                    onPressed: () => _verifyOtp(pinputController.text),
+                    onPressed: pinputController.text.length == 6 ? () => _verifyOtp(pinputController.text) : null,
                   ).animate().fadeIn(delay: 400.ms, duration: 400.ms).slideY(begin: 0.2),
                   
                   const SizedBox(height: 16),
