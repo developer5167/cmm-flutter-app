@@ -1,0 +1,97 @@
+class AppConstants {
+  AppConstants._();
+  static const String baseUrl = 'http://localhost:5050/api/v1';
+  static const String appName = 'GraceMatch';
+  static const String tagline = 'Where faith meets forever';
+}
+
+class ApiEndpoints {
+  ApiEndpoints._();
+  // Auth
+  static const String sendOtp = '/auth/send-otp';
+  static const String verifyOtp = '/auth/verify-otp';
+  static const String refreshToken = '/auth/refresh';
+  static const String logout = '/auth/logout';
+  static const String updateFcmToken = '/auth/fcm-token';
+
+  // Onboarding
+  static const String onboardingStatus = '/onboarding/status';
+  static const String onboardingHobbies = '/onboarding/hobbies';
+  static String onboardingStep(int step) => '/onboarding/step/$step';
+
+  // Profile
+  static const String myProfile = '/profile/me';
+  static String publicProfile(String id) => '/profile/$id';
+  static const String updateFamily = '/profile/family';
+  static const String updatePreferences = '/profile/preferences';
+  static const String updateSettings = '/profile/settings';
+
+  // Discover
+  static const String discoverFeed = '/discover/feed';
+
+  // Interests
+  static const String sendInterest = '/interests';
+  static const String interestsList = '/interests/list';
+  static String acceptInterest(String id) => '/interests/$id/accept';
+  static String rejectInterest(String id) => '/interests/$id/reject';
+
+  // Chat
+  static const String conversations = '/chat/conversations';
+  static String messages(String convId) => '/chat/$convId/messages';
+
+  // Trust
+  static String matchExplanation(String id) => '/trust/explanation/$id';
+  static const String report = '/trust/report';
+  static const String block = '/trust/block';
+  static const String videoSelfie = '/trust/video-selfie';
+
+  // Subscriptions
+  static const String plans = '/subscriptions/plans';
+  static const String razorpayOrder = '/subscriptions/razorpay/order';
+
+  // Premium
+  static const String spotlight = '/premium/spotlight';
+  static const String contactRequest = '/premium/contact-request';
+
+  // Growth
+  static const String successStories = '/growth/success-stories';
+  static const String analytics = '/growth/analytics';
+}
+
+class StorageKeys {
+  StorageKeys._();
+  static const String accessToken = 'access_token';
+  static const String refreshToken = 'refresh_token';
+  static const String userId = 'user_id';
+  static const String onboardingComplete = 'onboarding_complete';
+  static const String onboardingStep = 'onboarding_step';
+}
+
+class AppDurations {
+  AppDurations._();
+  static const Duration fast = Duration(milliseconds: 200);
+  static const Duration medium = Duration(milliseconds: 350);
+  static const Duration slow = Duration(milliseconds: 550);
+  static const Duration verySlow = Duration(milliseconds: 800);
+  static const Duration pageTransition = Duration(milliseconds: 400);
+}
+
+class AppSpacing {
+  AppSpacing._();
+  static const double xs = 4;
+  static const double sm = 8;
+  static const double md = 16;
+  static const double lg = 24;
+  static const double xl = 32;
+  static const double xxl = 48;
+  static const double xxxl = 64;
+}
+
+class AppRadius {
+  AppRadius._();
+  static const double sm = 8;
+  static const double md = 16;
+  static const double lg = 24;
+  static const double xl = 32;
+  static const double pill = 100;
+}
