@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
+import '../../../core/network/dio_client.dart';
+import '../../../core/constants/app_constants.dart';
 
 import '../screens/onboarding_screen.dart';
 
@@ -11,33 +13,64 @@ class Step7Hobbies extends StatefulWidget {
   State<Step7Hobbies> createState() => _Step7HobbiesState();
 }
 
-class _Step7HobbiesState extends OnboardingStepState<Step7Hobbies> {
-  final List<String> _selectedHobbies = [];
+class _Step7HobbiesState extends OnboardingStepState<Step7Hobbies> with AutomaticKeepAliveClientMixin {
+  final List<int> _selectedHobbyIds = [];
+  List<Map<String, dynamic>> _hobbies = [];
+  bool _isLoading = true;
+
+  @override
+  bool get wantKeepAlive => true;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchHobbies();
+  }
+
+  Future<void> _fetchHobbies() async {
+    try {
+      final response = await DioClient.instance.get(ApiEndpoints.onboardingHobbies);
+      final data = response.data['data'] as List;
+      
+      final parent = context.findAncestorStateOfType<OnboardingScreenState>();
+      final savedHobbies = parent?.onboardingData?['hobbies'] as List?;
+      
+      setState(() {
+        _hobbies = data.map((h) => {'id': h['id'] as int, 'name': h['name'] as String}).toList();
+        
+        if (savedHobbies != null) {
+          for (var sh in savedHobbies) {
+            final int id = sh['id'];
+            if (!_selectedHobbyIds.contains(id)) {
+              _selectedHobbyIds.add(id);
+            }
+          }
+        }
+        
+        _isLoading = false;
+      });
+    } catch (_) {
+      setState(() => _isLoading = false);
+    }
+  }
 
   @override
   Map<String, dynamic>? getStepData() {
-    if (_selectedHobbies.isEmpty) {
+    if (_selectedHobbyIds.isEmpty) {
       return null;
     }
     return {
-      'hobbies': _selectedHobbies,
+      'hobby_ids': _selectedHobbyIds,
     };
   }
 
-  final _hobbyCategories = {
-    'Faith & Community': ['Choir', 'Bible Study', 'Youth Ministry', 'Volunteering', 'Mission Trips'],
-    'Lifestyle': ['Traveling', 'Photography', 'Reading', 'Cooking', 'Fitness'],
-    'Arts & Culture': ['Music', 'Movies', 'Theatre', 'Painting', 'Dancing'],
-    'Sports & Outdoors': ['Cricket', 'Badminton', 'Trekking', 'Swimming'],
-  };
-
-  void _toggleHobby(String hobby) {
+  void _toggleHobby(int id) {
     setState(() {
-      if (_selectedHobbies.contains(hobby)) {
-        _selectedHobbies.remove(hobby);
+      if (_selectedHobbyIds.contains(id)) {
+        _selectedHobbyIds.remove(id);
       } else {
-        if (_selectedHobbies.length < 10) {
-          _selectedHobbies.add(hobby);
+        if (_selectedHobbyIds.length < 10) {
+          _selectedHobbyIds.add(id);
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('You can select up to 10 hobbies.')),
@@ -49,6 +82,17 @@ class _Step7HobbiesState extends OnboardingStepState<Step7Hobbies> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator(color: AppColors.gold));
+    }
+
+    if (_hobbies.isEmpty) {
+      return Center(
+        child: Text('Unable to load hobbies. Please try again.', style: AppTextStyles.bodyMedium),
+      );
+    }
+
     return SingleChildScrollView(
       padding: const EdgeInsets.symmetric(horizontal: 28),
       child: Column(
@@ -57,32 +101,25 @@ class _Step7HobbiesState extends OnboardingStepState<Step7Hobbies> {
           Row(
             children: [
               Text('Selected: ', style: AppTextStyles.labelMedium),
-              Text('${_selectedHobbies.length}/10',
+              Text('${_selectedHobbyIds.length}/10',
                   style: AppTextStyles.labelMedium.copyWith(color: AppColors.gold)),
             ],
           ),
           const SizedBox(height: 20),
 
-          ..._hobbyCategories.entries.map((category) {
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(category.key, style: AppTextStyles.labelLarge),
-                const SizedBox(height: 12),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: category.value
-                      .map((hobby) => _multiSelectChip(
-                          hobby,
-                          _selectedHobbies.contains(hobby),
-                          () => _toggleHobby(hobby)))
-                      .toList(),
-                ),
-                const SizedBox(height: 32),
-              ],
-            );
-          }),
+          Text('Choose your hobbies', style: AppTextStyles.labelLarge),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: _hobbies
+                .map((hobby) => _multiSelectChip(
+                    hobby['name'] as String,
+                    _selectedHobbyIds.contains(hobby['id']),
+                    () => _toggleHobby(hobby['id'] as int)))
+                .toList(),
+          ),
+          const SizedBox(height: 32),
         ],
       ),
     );

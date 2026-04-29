@@ -17,6 +17,22 @@ class _Step4LifestyleState extends OnboardingStepState<Step4Lifestyle> {
   String? _drink;
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final parent = context.findAncestorStateOfType<OnboardingScreenState>();
+      final profile = parent?.onboardingData?['profile'];
+      if (profile != null && mounted) {
+        setState(() {
+          _diet = profile['diet'];
+          _smoke = profile['smoking'];
+          _drink = profile['drinking'];
+        });
+      }
+    });
+  }
+
+  @override
   Map<String, dynamic>? getStepData() {
     if (_diet == null || _smoke == null || _drink == null) {
       return null;
@@ -40,7 +56,7 @@ class _Step4LifestyleState extends OnboardingStepState<Step4Lifestyle> {
             children: [
               _choiceCard('Veg', '🥗', 'veg', _diet, (v) => setState(() => _diet = v)),
               const SizedBox(width: 12),
-              _choiceCard('Non-Veg', '🍗', 'nonveg', _diet, (v) => setState(() => _diet = v)),
+              _choiceCard('Non-Veg', '🍗', 'non_veg', _diet, (v) => setState(() => _diet = v)),
             ],
           ),
           const SizedBox(height: 32),
@@ -60,7 +76,7 @@ class _Step4LifestyleState extends OnboardingStepState<Step4Lifestyle> {
             children: [
               _choiceCard('No', '🚫', 'no', _drink, (v) => setState(() => _drink = v)),
               const SizedBox(width: 12),
-              _choiceCard('Occasional', '🥂', 'occasional', _drink, (v) => setState(() => _drink = v)),
+              _choiceCard('Occasional', '🥂', 'occasionally', _drink, (v) => setState(() => _drink = v)),
               const SizedBox(width: 12),
               _choiceCard('Yes', '🍺', 'yes', _drink, (v) => setState(() => _drink = v)),
             ],

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../core/theme/app_colors.dart';
@@ -158,7 +159,13 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
           ),
           const Spacer(),
           GestureDetector(
-            onTap: () => AppHaptics.light(),
+            onTap: () async {
+              AppHaptics.light();
+              await context.push('/onboarding', extra: 5); // Step 6: Preferences
+              if (mounted) {
+                context.read<DiscoverBloc>().add(const FetchFeedEvent());
+              }
+            },
             child: Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(

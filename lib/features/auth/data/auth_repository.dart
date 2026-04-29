@@ -8,7 +8,17 @@ class AuthRepository {
 
   Future<void> sendOtp(String phone) async {
     try {
-      await _dio.post(ApiEndpoints.sendOtp, data: {'phone': phone});
+      String countryCode = '+91';
+      String phoneNumber = phone;
+      if (phone.startsWith('+')) {
+        // Simple extraction assuming 2-digit country code like +91
+        countryCode = phone.substring(0, 3);
+        phoneNumber = phone.substring(3);
+      }
+      await _dio.post(ApiEndpoints.sendOtp, data: {
+        'phone_number': phoneNumber,
+        'country_code': countryCode
+      });
     } on DioException catch (e) {
       throw _handleError(e);
     }
@@ -16,9 +26,19 @@ class AuthRepository {
 
   Future<Map<String, dynamic>> verifyOtp(String phone, String otp) async {
     try {
+      String countryCode = '+91';
+      String phoneNumber = phone;
+      if (phone.startsWith('+')) {
+        countryCode = phone.substring(0, 3);
+        phoneNumber = phone.substring(3);
+      }
       final response = await _dio.post(
         ApiEndpoints.verifyOtp,
-        data: {'phone': phone, 'otp': otp},
+        data: {
+          'phone_number': phoneNumber,
+          'country_code': countryCode,
+          'otp': otp
+        },
       );
       
       final data = response.data['data'];
@@ -57,7 +77,16 @@ class AuthRepository {
 
   String _handleError(DioException e) {
     if (e.response != null) {
-      return e.response?.data['message'] ?? 'An error occurred';
+      final data = e.response?.data;
+      if (data is Map<String, dynamic>) {
+        if (data['errors'] != null && data['errors'] is List) {
+          final errors = data['errors'] as List;
+          if (errors.isNotEmpty) {
+            return errors.map((err) => '• ${err['message']}').join('\n');
+          }
+        }
+        return data['message'] ?? 'An error occurred';
+      }
     }
     return 'Detailed network error. Please try again.';
   }

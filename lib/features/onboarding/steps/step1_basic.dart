@@ -20,6 +20,24 @@ class _Step1BasicState extends OnboardingStepState<Step1Basic> {
   final _cityCtrl = TextEditingController();
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final parent = context.findAncestorStateOfType<OnboardingScreenState>();
+      final profile = parent?.onboardingData?['profile'];
+      if (profile != null && mounted) {
+        setState(() {
+          _gender = profile['gender'];
+          _lookingFor = profile['looking_for'];
+          if (profile['first_name'] != null) _nameCtrl.text = profile['first_name'];
+          if (profile['date_of_birth'] != null) _dob = DateTime.tryParse(profile['date_of_birth']);
+          if (profile['location_city'] != null) _cityCtrl.text = profile['location_city'];
+        });
+      }
+    });
+  }
+
+  @override
   Map<String, dynamic>? getStepData() {
     if (_gender == null || _lookingFor == null || _nameCtrl.text.isEmpty || _dob == null || _cityCtrl.text.isEmpty) {
       return null;
@@ -27,9 +45,9 @@ class _Step1BasicState extends OnboardingStepState<Step1Basic> {
     return {
       'gender': _gender,
       'looking_for': _lookingFor,
-      'full_name': _nameCtrl.text.trim(),
+      'first_name': _nameCtrl.text.trim(),
       'date_of_birth': _dob!.toIso8601String(),
-      'city': _cityCtrl.text.trim(),
+      'location_city': _cityCtrl.text.trim(),
     };
   }
 

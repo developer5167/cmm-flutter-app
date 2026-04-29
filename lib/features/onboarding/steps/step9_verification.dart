@@ -20,7 +20,9 @@ class _Step9VerificationState extends OnboardingStepState<Step9Verification> {
   @override
   Map<String, dynamic>? getStepData() {
     if (_videoPath == null) {
-      return null;
+      // Returning an empty map allows the user to click "Continue" and skip 
+      // without being blocked by validation.
+      return {};
     }
     return {
       'verification_video_path': _videoPath,

@@ -69,7 +69,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
     final defaultPinTheme = PinTheme(
       width: 56,
       height: 64,
-      textStyle: AppTextStyles.headlineLarge.copyWith(color: AppColors.textPrimary),
+      textStyle: AppTextStyles.bodyLarge.copyWith(fontSize: 24, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
       decoration: BoxDecoration(
         color: AppColors.surfaceElevated,
         borderRadius: BorderRadius.circular(16),

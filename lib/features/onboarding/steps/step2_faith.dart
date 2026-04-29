@@ -18,10 +18,50 @@ class _Step2FaithState extends OnboardingStepState<Step2Faith> {
   final _churchNameCtrl = TextEditingController();
   final _casteCtrl = TextEditingController();
 
-  final _denominations = ['CSI', 'Catholic', 'Pentecostal', 'Baptist', 'Born Again', 'Orthodox', 'Other'];
-  final _intents = ['Ready Now', 'Within 6 Months', 'Within 1 Year', 'Within 2 Years'];
-  final _faithLevels = ['Very Strong', 'Strong', 'Moderate', 'Growing'];
-  final _involvements = ['Very Active', 'Active', 'Occasional', 'Rare'];
+  // Maps: display label → API value
+  final _denominations = {
+    'CSI': 'csi', 'Catholic': 'catholic', 'Pentecostal': 'pentecostal',
+    'Protestant': 'protestant', 'Born Again': 'born_again', 'Orthodox': 'orthodox', 'Other': 'other',
+  };
+  final _intents = {
+    'Ready Now': 'ready_now', 'Within 6 Months': 'within_6_months',
+    'Within 1 Year': 'within_1_year', 'Within 2 Years': 'within_2_years',
+  };
+  final _faithLevels = {
+    'Very Strong': 'very_strong', 'Strong': 'strong', 'Moderate': 'moderate', 'Growing': 'growing',
+  };
+  final _involvements = {
+    'Very Active': 'very_active', 'Active': 'active', 'Occasional': 'occasional', 'Rare': 'rare',
+  };
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final parent = context.findAncestorStateOfType<OnboardingScreenState>();
+      final profile = parent?.onboardingData?['profile'];
+      if (profile != null && mounted) {
+        setState(() {
+          if (profile['church_name'] != null) _churchNameCtrl.text = profile['church_name'];
+          if (profile['caste'] != null) _casteCtrl.text = profile['caste'];
+
+          // Reverse lookups
+          if (profile['denomination'] != null) {
+            _denomination = _denominations.entries.cast<MapEntry<String, String>?>().firstWhere((e) => e?.value == profile['denomination'], orElse: () => null)?.key;
+          }
+          if (profile['marriage_intent'] != null) {
+            _marriageIntent = _intents.entries.cast<MapEntry<String, String>?>().firstWhere((e) => e?.value == profile['marriage_intent'], orElse: () => null)?.key;
+          }
+          if (profile['faith_level'] != null) {
+            _faithLevel = _faithLevels.entries.cast<MapEntry<String, String>?>().firstWhere((e) => e?.value == profile['faith_level'], orElse: () => null)?.key;
+          }
+          if (profile['church_involvement'] != null) {
+            _churchInvolvement = _involvements.entries.cast<MapEntry<String, String>?>().firstWhere((e) => e?.value == profile['church_involvement'], orElse: () => null)?.key;
+          }
+        });
+      }
+    });
+  }
 
   @override
   Map<String, dynamic>? getStepData() {
@@ -29,10 +69,10 @@ class _Step2FaithState extends OnboardingStepState<Step2Faith> {
       return null;
     }
     return {
-      'denomination': _denomination,
-      'marriage_intent': _marriageIntent,
-      'faith_level': _faithLevel,
-      'church_involvement': _churchInvolvement,
+      'denomination': _denominations[_denomination],
+      'marriage_intent': _intents[_marriageIntent],
+      'faith_level': _faithLevels[_faithLevel],
+      'church_involvement': _involvements[_churchInvolvement],
       'church_name': _churchNameCtrl.text.trim(),
       'caste': _casteCtrl.text.trim(),
     };
@@ -46,7 +86,7 @@ class _Step2FaithState extends OnboardingStepState<Step2Faith> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _sectionLabel('Denomination'),
-          Wrap(spacing: 8, runSpacing: 8, children: _denominations.map((d) =>
+          Wrap(spacing: 8, runSpacing: 8, children: _denominations.keys.map((d) =>
             _selectChip(d, _denomination, (v) => setState(() => _denomination = v))
           ).toList()),
 
@@ -60,19 +100,19 @@ class _Step2FaithState extends OnboardingStepState<Step2Faith> {
 
           const SizedBox(height: 24),
           _sectionLabel('Marriage Intent'),
-          Wrap(spacing: 8, runSpacing: 8, children: _intents.map((i) =>
+          Wrap(spacing: 8, runSpacing: 8, children: _intents.keys.map((i) =>
             _selectChip(i, _marriageIntent, (v) => setState(() => _marriageIntent = v))
           ).toList()),
 
           const SizedBox(height: 24),
           _sectionLabel('Faith Level'),
-          Wrap(spacing: 8, runSpacing: 8, children: _faithLevels.map((f) =>
+          Wrap(spacing: 8, runSpacing: 8, children: _faithLevels.keys.map((f) =>
             _selectChip(f, _faithLevel, (v) => setState(() => _faithLevel = v))
           ).toList()),
 
           const SizedBox(height: 24),
           _sectionLabel('Church Involvement'),
-          Wrap(spacing: 8, runSpacing: 8, children: _involvements.map((c) =>
+          Wrap(spacing: 8, runSpacing: 8, children: _involvements.keys.map((c) =>
             _selectChip(c, _churchInvolvement, (v) => setState(() => _churchInvolvement = v))
           ).toList()),
 

@@ -1,6 +1,6 @@
 class AppConstants {
   AppConstants._();
-  static const String baseUrl = 'http://localhost:5050/api/v1';
+  static const String baseUrl = 'https://edison-unsighted-shani.ngrok-free.dev/api/v1';
   static const String appName = 'GraceMatch';
   static const String tagline = 'Where faith meets forever';
 }

@@ -14,14 +14,20 @@ class AppShell extends StatefulWidget {
 }
 
 class _AppShellState extends State<AppShell> {
-  int _selectedIndex = 0;
+  int get _selectedIndex {
+    try {
+      final location = GoRouterState.of(context).uri.path;
+      if (location.startsWith('/discover')) return 0;
+      if (location.startsWith('/interests')) return 1;
+      if (location.startsWith('/chat')) return 2;
+      if (location.startsWith('/profile')) return 3;
+    } catch (_) {}
+    return 0;
+  }
 
   static const _tabs = [
     _NavTab(path: '/discover', icon: Icons.explore_rounded, label: 'Discover'),
-    _NavTab(
-        path: '/interests',
-        icon: Icons.favorite_rounded,
-        label: 'Interests'),
+    _NavTab(path: '/interests', icon: Icons.favorite_rounded, label: 'Interests'),
     _NavTab(path: '/chat', icon: Icons.chat_bubble_rounded, label: 'Chat'),
     _NavTab(path: '/profile', icon: Icons.person_rounded, label: 'Profile'),
   ];
@@ -29,19 +35,27 @@ class _AppShellState extends State<AppShell> {
   void _onTabSelected(int index) {
     if (_selectedIndex == index) return;
     AppHaptics.selection();
-    setState(() => _selectedIndex = index);
-    GoRouter.of(context).go(_tabs[index].path);
+    context.go(_tabs[index].path);
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      extendBody: true,
-      body: widget.child,
-      bottomNavigationBar: _PremiumNavBar(
-        selectedIndex: _selectedIndex,
-        tabs: _tabs,
-        onTabSelected: _onTabSelected,
+    return PopScope(
+      canPop: _selectedIndex == 0,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        if (_selectedIndex != 0) {
+          _onTabSelected(0);
+        }
+      },
+      child: Scaffold(
+        extendBody: true,
+        body: widget.child,
+        bottomNavigationBar: _PremiumNavBar(
+          selectedIndex: _selectedIndex,
+          tabs: _tabs,
+          onTabSelected: _onTabSelected,
+        ),
       ),
     );
   }

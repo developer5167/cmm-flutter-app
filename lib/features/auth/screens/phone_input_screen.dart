@@ -183,11 +183,11 @@ class _PhoneInputScreenState extends State<PhoneInputScreen> {
             child: TextField(
               controller: _phoneController,
               keyboardType: TextInputType.phone,
-              style: AppTextStyles.headlineSmall,
+              style: AppTextStyles.bodyLarge.copyWith(fontSize: 18, fontWeight: FontWeight.w600),
               cursorColor: AppColors.gold,
               decoration: InputDecoration(
                 hintText: '0000 0000 00',
-                hintStyle: AppTextStyles.headlineSmall.copyWith(color: AppColors.textTertiary),
+                hintStyle: AppTextStyles.bodyLarge.copyWith(fontSize: 18, fontWeight: FontWeight.w600, color: AppColors.textTertiary),
                 border: InputBorder.none,
                 enabledBorder: InputBorder.none,
                 focusedBorder: InputBorder.none,

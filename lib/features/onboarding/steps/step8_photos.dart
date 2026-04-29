@@ -17,17 +17,34 @@ class Step8Photos extends StatefulWidget {
   State<Step8Photos> createState() => _Step8PhotosState();
 }
 
-class _Step8PhotosState extends OnboardingStepState<Step8Photos> {
+class _Step8PhotosState extends OnboardingStepState<Step8Photos> with AutomaticKeepAliveClientMixin {
   final List<String?> _photoPaths = List.filled(6, null);
   final ImagePicker _picker = ImagePicker();
+
+  @override
+  bool get wantKeepAlive => true;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final parent = context.findAncestorStateOfType<OnboardingScreenState>();
+      final photos = parent?.onboardingData?['photos'] as List?;
+      if (photos != null && mounted) {
+        setState(() {
+          for (int i = 0; i < photos.length && i < 6; i++) {
+            _photoPaths[i] = photos[i]['photo_url'];
+          }
+        });
+      }
+    });
+  }
 
   @override
   Map<String, dynamic>? getStepData() {
     if (_photoPaths[0] == null) {
       return null;
     }
-    // Step 8 data might just be a confirmation or the list of server URLs if we had them
-    // For now, let's just return a placeholder or the counts
     return {
       'photo_count': _photoPaths.where((p) => p != null).length,
     };
@@ -56,6 +73,7 @@ class _Step8PhotosState extends OnboardingStepState<Step8Photos> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     return BlocListener<OnboardingBloc, OnboardingState>(
       listener: (context, state) {
         if (state is PhotoUploadedSuccess) {
@@ -96,6 +114,7 @@ class _Step8PhotosState extends OnboardingStepState<Step8Photos> {
   Widget _buildPhotoSlot(int index) {
     final path = _photoPaths[index];
     final hasPhoto = path != null;
+    final isNetwork = path != null && path.startsWith('http');
 
     return GestureDetector(
       onTap: () => hasPhoto ? null : _pickPhoto(index),
@@ -113,10 +132,9 @@ class _Step8PhotosState extends OnboardingStepState<Step8Photos> {
                 children: [
                   ClipRRect(
                     borderRadius: BorderRadius.circular(15),
-                    child: Image.file(
-                      File(path),
-                      fit: BoxFit.cover,
-                    ),
+                    child: isNetwork
+                      ? Image.network(path, fit: BoxFit.cover)
+                      : Image.file(File(path), fit: BoxFit.cover),
                   ),
                   Positioned(
                     top: -4,

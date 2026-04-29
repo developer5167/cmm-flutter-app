@@ -17,21 +17,45 @@ class _Step5FamilyState extends OnboardingStepState<Step5Family> {
   final _fatherCtrl = TextEditingController();
   final _motherCtrl = TextEditingController();
 
+  // Maps: display label → API value
+  final _familyTypes = {'Nuclear': 'nuclear', 'Joint': 'joint', 'Other': 'other'};
+  final _familyValuesMap = {'Orthodox': 'middle', 'Traditional': 'middle', 'Moderate': 'upper_middle', 'Liberal': 'affluent'};
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final parent = context.findAncestorStateOfType<OnboardingScreenState>();
+      final family = parent?.onboardingData?['family'];
+      if (family != null && mounted) {
+        setState(() {
+          if (family['father_occupation'] != null) _fatherCtrl.text = family['father_occupation'];
+          if (family['mother_occupation'] != null) _motherCtrl.text = family['mother_occupation'];
+          
+          if (family['family_type'] != null) {
+            _familyType = _familyTypes.entries.cast<MapEntry<String, String>?>().firstWhere((e) => e?.value == family['family_type'], orElse: () => null)?.key;
+          }
+          
+          if (family['family_class'] != null) {
+            _familyValue = _familyValuesMap.entries.cast<MapEntry<String, String>?>().firstWhere((e) => e?.value == family['family_class'], orElse: () => null)?.key;
+          }
+        });
+      }
+    });
+  }
+
   @override
   Map<String, dynamic>? getStepData() {
     if (_familyType == null || _familyValue == null) {
       return null;
     }
     return {
-      'family_type': _familyType,
-      'family_values': _familyValue,
+      'family_type': _familyTypes[_familyType],
+      'family_class': _familyValuesMap[_familyValue],
       'father_occupation': _fatherCtrl.text.trim(),
       'mother_occupation': _motherCtrl.text.trim(),
     };
   }
-
-  final _familyTypes = ['Nuclear', 'Joint', 'Other'];
-  final _familyValues = ['Orthodox', 'Traditional', 'Moderate', 'Liberal'];
 
   @override
   Widget build(BuildContext context) {
@@ -44,7 +68,7 @@ class _Step5FamilyState extends OnboardingStepState<Step5Family> {
           Wrap(
             spacing: 8,
             runSpacing: 8,
-            children: _familyTypes
+            children: _familyTypes.keys
                 .map((t) => _selectChip(
                     t, _familyType, (v) => setState(() => _familyType = v)))
                 .toList(),
@@ -55,7 +79,7 @@ class _Step5FamilyState extends OnboardingStepState<Step5Family> {
           Wrap(
             spacing: 8,
             runSpacing: 8,
-            children: _familyValues
+            children: _familyValuesMap.keys
                 .map((v) => _selectChip(
                     v, _familyValue, (val) => setState(() => _familyValue = val)))
                 .toList(),

@@ -15,18 +15,34 @@ class _Step10FinalState extends OnboardingStepState<Step10Final> {
   String? _managedBy;
   bool _agreeTerms = false;
 
+  // Maps: display label → API value
+  final _managers = {'Self': 'self', 'Parent': 'parents', 'Sibling': 'others', 'Relative': 'others'};
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final parent = context.findAncestorStateOfType<OnboardingScreenState>();
+      final profile = parent?.onboardingData?['profile'];
+      if (profile != null && mounted) {
+        setState(() {
+          if (profile['profile_managed_by'] != null) {
+            _managedBy = _managers.entries.cast<MapEntry<String, String>?>().firstWhere((e) => e?.value == profile['profile_managed_by'], orElse: () => null)?.key;
+          }
+        });
+      }
+    });
+  }
+
   @override
   Map<String, dynamic>? getStepData() {
     if (_managedBy == null || !_agreeTerms) {
       return null;
     }
     return {
-      'managed_by': _managedBy,
-      'terms_accepted': _agreeTerms,
+      'profile_managed_by': _managers[_managedBy],
     };
   }
-
-  final _managers = ['Self', 'Parent', 'Sibling', 'Relative'];
 
   @override
   Widget build(BuildContext context) {
@@ -60,7 +76,7 @@ class _Step10FinalState extends OnboardingStepState<Step10Final> {
           Wrap(
             spacing: 8,
             runSpacing: 8,
-            children: _managers
+            children: _managers.keys
                 .map((m) => _selectChip(
                     m, _managedBy, (v) => setState(() => _managedBy = v)))
                 .toList(),

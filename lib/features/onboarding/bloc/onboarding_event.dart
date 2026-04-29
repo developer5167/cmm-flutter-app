@@ -7,6 +7,8 @@ abstract class OnboardingEvent extends Equatable {
   List<Object?> get props => [];
 }
 
+class LoadStatusEvent extends OnboardingEvent {}
+
 class SaveStepEvent extends OnboardingEvent {
   final int step;
   final Map<String, dynamic> data;

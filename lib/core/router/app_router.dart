@@ -70,7 +70,10 @@ class AppRouter {
         // ─── Onboarding ───────────────────────────────────────
         GoRoute(
           path: '/onboarding',
-          builder: (_, __) => const OnboardingScreen(),
+          builder: (_, state) {
+            final initialStep = state.extra as int?;
+            return OnboardingScreen(initialStep: initialStep);
+          },
         ),
 
         // ─── Main Shell (bottom nav) ──────────────────────────
@@ -87,6 +90,10 @@ class AppRouter {
               builder: (_, __) => const InterestsScreen(),
             ),
             GoRoute(
+              path: '/chat',
+              builder: (_, __) => const ConversationsScreen(),
+            ),
+            GoRoute(
               path: '/profile',
               builder: (_, __) => const MyProfileScreen(),
             ),
@@ -95,22 +102,16 @@ class AppRouter {
 
         // ─── Detail Routes (full screen) ──────────────────────
         GoRoute(
-          path: '/chat',
-          builder: (_, __) => const ConversationsScreen(),
-          routes: [
-            GoRoute(
-              path: ':convId',
-              builder: (_, state) {
-                final convId = state.pathParameters['convId']!;
-                final extra = state.extra as Map<String, dynamic>?;
-                return ChatScreen(
-                  conversationId: convId,
-                  otherUserName: extra?['name'] ?? '',
-                  otherUserPhoto: extra?['photo'],
-                );
-              },
-            ),
-          ],
+          path: '/chat/:convId',
+          builder: (_, state) {
+            final convId = state.pathParameters['convId']!;
+            final extra = state.extra as Map<String, dynamic>?;
+            return ChatScreen(
+              conversationId: convId,
+              otherUserName: extra?['name'] ?? '',
+              otherUserPhoto: extra?['photo'],
+            );
+          },
         ),
         GoRoute(
           path: '/profile/:id',

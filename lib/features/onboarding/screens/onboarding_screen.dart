@@ -7,6 +7,7 @@ import '../../../core/theme/app_text_styles.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/widgets/app_button.dart';
 import '../../../core/utils/app_haptics.dart';
+import '../../../core/storage/app_storage.dart';
 import '../widgets/step_indicator.dart';
 import '../steps/step1_basic.dart';
 import '../steps/step2_faith.dart';
@@ -23,16 +24,25 @@ import '../bloc/onboarding_event.dart';
 import '../bloc/onboarding_state.dart';
 
 class OnboardingScreen extends StatefulWidget {
-  const OnboardingScreen({super.key});
+  final int? initialStep;
+  const OnboardingScreen({super.key, this.initialStep});
 
   @override
-  State<OnboardingScreen> createState() => _OnboardingScreenState();
+  State<OnboardingScreen> createState() => OnboardingScreenState();
 }
 
-class _OnboardingScreenState extends State<OnboardingScreen> {
-  final _pageController = PageController();
-  int _currentStep = 0;
+class OnboardingScreenState extends State<OnboardingScreen> {
+  late PageController _pageController;
+  late int _currentStep;
   static const int _totalSteps = 10;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentStep = widget.initialStep ?? 0;
+    _pageController = PageController(initialPage: _currentStep);
+    context.read<OnboardingBloc>().add(LoadStatusEvent());
+  }
 
   // Keys to access step data
   final List<GlobalKey<OnboardingStepState>> _stepKeys = 
@@ -64,6 +74,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     'Who manages this profile?',
   ];
 
+  Map<String, dynamic>? onboardingData;
+
+
+
   void _nextStep() {
     final currentKey = _stepKeys[_currentStep];
     final stepData = currentKey.currentState?.getStepData();
@@ -79,19 +93,49 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   }
 
   void _onStepSaved() {
+    if (widget.initialStep != null) {
+      context.pop();
+      return;
+    }
+
     if (_currentStep < _totalSteps - 1) {
-      AppHaptics.light();
-      _pageController.nextPage(
-        duration: const Duration(milliseconds: 400),
-        curve: Curves.easeOutCubic,
-      );
       setState(() => _currentStep++);
+      _pageController.animateToPage(
+        _currentStep,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeInOut,
+      );
     } else {
-      _finalize();
+      // Completed onboarding
+      AppStorage.saveOnboardingComplete(true);
+      if (mounted) {
+        context.go('/discover');
+      }
     }
   }
 
+  String _getStepTitle() {
+    if (widget.initialStep != null) {
+      final titles = [
+        'Basic Info', 'Faith Details', 'Bio & Details', 'Lifestyle',
+        'Family Background', 'Partner Preferences', 'Hobbies', 'My Photos',
+        'Verification', 'Finalize'
+      ];
+      return 'Edit ${titles[_currentStep]}';
+    }
+    return 'GraceMatch';
+  }
+
   void _prevStep() {
+    if (widget.initialStep != null && _currentStep == widget.initialStep) {
+      if (context.canPop()) {
+        context.pop();
+      } else {
+        context.go('/profile');
+      }
+      return;
+    }
+    
     if (_currentStep > 0) {
       AppHaptics.light();
       _pageController.previousPage(
@@ -99,6 +143,12 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         curve: Curves.easeOutCubic,
       );
       setState(() => _currentStep--);
+    } else {
+      if (context.canPop()) {
+        context.pop();
+      } else {
+        context.go('/auth/phone');
+      }
     }
   }
 
@@ -111,7 +161,22 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   Widget build(BuildContext context) {
     return BlocConsumer<OnboardingBloc, OnboardingState>(
       listener: (context, state) {
-        if (state is StepSavedSuccess) {
+        if (state is OnboardingStatusLoaded) {
+          onboardingData = state.data;
+          int fetchedStep = onboardingData!['current_step'] ?? 0;
+          if (widget.initialStep != null) {
+            fetchedStep = widget.initialStep!;
+          }
+          if (fetchedStep >= _totalSteps) fetchedStep = _totalSteps - 1;
+          setState(() {
+            _currentStep = fetchedStep;
+          });
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (_pageController.hasClients) {
+              _pageController.jumpToPage(_currentStep);
+            }
+          });
+        } else if (state is StepSavedSuccess) {
           _onStepSaved();
         } else if (state is OnboardingError) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -124,6 +189,13 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         }
       },
       builder: (context, state) {
+        if (onboardingData == null && (state is OnboardingLoading || state is OnboardingInitial)) {
+          return const Scaffold(
+            backgroundColor: AppColors.background,
+            body: Center(child: CircularProgressIndicator(color: AppColors.gold)),
+          );
+        }
+
         final isLoading = state is OnboardingLoading;
         
         final List<Widget> steps = [
@@ -145,13 +217,14 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             child: Column(
               children: [
                 _buildHeader(isLoading),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 12),
-                  child: OnboardingStepIndicator(
-                    total: _totalSteps,
-                    current: _currentStep,
+                if (widget.initialStep == null)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 12),
+                    child: OnboardingStepIndicator(
+                      total: _totalSteps,
+                      current: _currentStep,
+                    ),
                   ),
-                ),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 28),
                   child: Column(
@@ -160,7 +233,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                       AnimatedSwitcher(
                         duration: const Duration(milliseconds: 300),
                         child: Text(
-                          _stepTitles[_currentStep],
+                          widget.initialStep != null ? 'Edit ${_stepTitles[_currentStep]}' : _stepTitles[_currentStep],
                           key: ValueKey('title_$_currentStep'),
                           style: AppTextStyles.headlineLarge,
                         ),
@@ -216,28 +289,34 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           else
             const SizedBox(width: 48),
           const Spacer(),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-            decoration: BoxDecoration(
-              color: AppColors.goldSubtle,
-              borderRadius: BorderRadius.circular(100),
-              border: Border.all(color: AppColors.goldMild),
-            ),
-            child: Text(
-              '${_currentStep + 1} / $_totalSteps',
-              style: AppTextStyles.labelSmall.copyWith(color: AppColors.gold),
-            ),
-          ),
+          if (widget.initialStep == null)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+              decoration: BoxDecoration(
+                color: AppColors.goldSubtle,
+                borderRadius: BorderRadius.circular(100),
+                border: Border.all(color: AppColors.goldMild),
+              ),
+              child: Text(
+                '${_currentStep + 1} / $_totalSteps',
+                style: AppTextStyles.labelSmall.copyWith(color: AppColors.gold),
+              ),
+            )
+          else
+            const SizedBox(width: 48),
           const Spacer(),
-          TextButton(
-            onPressed: isLoading
-                ? null
-                : () {
-                    AppHaptics.light();
-                    _onStepSaved();
-                  },
-            child: Text('Skip', style: AppTextStyles.labelMedium),
-          ),
+          if (widget.initialStep == null)
+            TextButton(
+              onPressed: isLoading
+                  ? null
+                  : () {
+                      AppHaptics.light();
+                      _onStepSaved();
+                    },
+              child: Text('Skip', style: AppTextStyles.labelMedium),
+            )
+          else
+            const SizedBox(width: 48),
         ],
       ),
     );
