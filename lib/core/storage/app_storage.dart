@@ -54,4 +54,10 @@ class AppStorage {
 
   static bool isOnboardingComplete() =>
       _prefs.get(StorageKeys.onboardingComplete, defaultValue: false) as bool;
+
+  static void saveReviewStatus(String? status) =>
+      _prefs.put('review_status', status);
+
+  static String? getReviewStatus() =>
+      _prefs.get('review_status') as String?;
 }

@@ -12,6 +12,7 @@ import '../../features/profile/screens/my_profile_screen.dart';
 import '../../features/profile/screens/public_profile_screen.dart';
 import '../../features/settings/screens/settings_screen.dart';
 import '../../features/subscriptions/screens/subscription_screen.dart';
+import '../../features/profile/screens/review_status_screen.dart';
 import '../storage/app_storage.dart';
 import '../../core/widgets/app_shell.dart';
 
@@ -44,9 +45,20 @@ class AppRouter {
           return '/onboarding';
         }
 
+        // Check review status
+        final reviewStatus = AppStorage.getReviewStatus();
+        if (reviewStatus != 'approved') {
+          if (path == '/review-status') return null;
+          return '/review-status';
+        }
+
         return null;
       },
       routes: [
+        GoRoute(
+          path: '/review-status',
+          builder: (_, __) => const ReviewStatusScreen(),
+        ),
         GoRoute(
           path: '/splash',
           builder: (_, __) => const SplashScreen(),
@@ -110,13 +122,24 @@ class AppRouter {
               conversationId: convId,
               otherUserName: extra?['name'] ?? '',
               otherUserPhoto: extra?['photo'],
+              otherUserId: extra?['userId']?.toString(),
             );
           },
         ),
         GoRoute(
+          path: '/profile/preview',
+          builder: (_, __) => const PublicProfileScreen(),
+        ),
+        GoRoute(
           path: '/profile/:id',
-          builder: (_, state) =>
-              PublicProfileScreen(userId: state.pathParameters['id']!),
+          builder: (_, state) {
+            final source = state.uri.queryParameters['source'];
+            final hideActions = source == 'interests' || source == 'chat';
+            return PublicProfileScreen(
+              userId: state.pathParameters['id']!,
+              showBottomActions: !hideActions,
+            );
+          },
         ),
         GoRoute(
           path: '/settings',

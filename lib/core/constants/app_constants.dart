@@ -40,6 +40,8 @@ class ApiEndpoints {
   // Chat
   static const String conversations = '/chat/conversations';
   static String messages(String convId) => '/chat/$convId/messages';
+  static String markRead(String convId) => '/chat/$convId/read';
+  static String userStatus(String userId) => '/chat/user-status/$userId';
 
   // Trust
   static String matchExplanation(String id) => '/trust/explanation/$id';

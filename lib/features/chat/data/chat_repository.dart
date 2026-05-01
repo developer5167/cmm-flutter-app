@@ -23,9 +23,31 @@ class ChatRepository {
     }
   }
 
-  Future<void> sendMessage(String conversationId, String text) async {
+  /// Returns `{ is_online: bool, last_seen_at: String? }` for a user.
+  Future<Map<String, dynamic>> fetchUserStatus(String userId) async {
     try {
-      await _dio.post(ApiEndpoints.messages(conversationId), data: {'text': text});
+      final response = await _dio.get(ApiEndpoints.userStatus(userId));
+      return Map<String, dynamic>.from(response.data['data'] as Map);
+    } catch (_) {
+      return {'is_online': false, 'last_seen_at': null};
+    }
+  }
+
+  /// Marks all unread messages in [conversationId] as read.
+  /// Fire-and-forget — errors are swallowed intentionally.
+  Future<void> markRead(String conversationId) async {
+    try {
+      await _dio.post(ApiEndpoints.markRead(conversationId));
+    } catch (_) {}
+  }
+
+  Future<Map<String, dynamic>> sendMessage(String conversationId, String text) async {
+    try {
+      final response = await _dio.post(
+        ApiEndpoints.messages(conversationId),
+        data: {'content': text, 'message_type': 'text'},
+      );
+      return Map<String, dynamic>.from(response.data['data'] as Map);
     } on DioException catch (e) {
       throw _handleError(e);
     }

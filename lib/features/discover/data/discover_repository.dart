@@ -17,7 +17,8 @@ class DiscoverRepository {
   Future<void> sendInterest(String targetUserId, {bool isSuperInterest = false}) async {
     try {
       await _dio.post(ApiEndpoints.sendInterest, data: {
-        'target_user_id': targetUserId,
+        'receiver_id': targetUserId,
+        'is_super_interest': isSuperInterest,
         'type': isSuperInterest ? 'super_interest' : 'interest'
       });
     } on DioException catch (e) {
@@ -28,7 +29,7 @@ class DiscoverRepository {
   Future<void> passProfile(String targetUserId) async {
     try {
       await _dio.post(ApiEndpoints.sendInterest, data: {
-        'target_user_id': targetUserId,
+        'receiver_id': targetUserId,
         'type': 'pass'
       });
     } on DioException catch (e) {

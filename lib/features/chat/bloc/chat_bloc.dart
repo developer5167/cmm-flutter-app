@@ -8,20 +8,62 @@ import '../../../core/network/socket_service.dart';
 class ChatBloc extends Bloc<ChatEvent, ChatState> {
   final ChatRepository _repository;
   final SocketService _socketService;
+
+  String? _currentConversationId;
+
+  // Track IDs of messages we sent via HTTP so we don't double-add them
+  // if the backend ever echoes them back through the socket.
+  final Set<String> _sentMessageIds = {};
+
+  // Delivered receipts that arrived before the HTTP response came back
+  // (socket is faster than HTTP round-trip). Flushed when HTTP confirms.
+  final Set<String> _pendingDelivered = {};
+
   StreamSubscription? _socketSubscription;
+  StreamSubscription? _deliveredSubscription;
+  StreamSubscription? _readSubscription;
 
   ChatBloc(this._repository, this._socketService) : super(ChatInitial()) {
     on<FetchConversationsEvent>(_onFetchConversations);
     on<FetchMessagesEvent>(_onFetchMessages);
+    on<SetCurrentConversationEvent>(_onSetCurrentConversation);
     on<SendMessageEvent>(_onSendMessage);
     on<NewMessageReceivedEvent>(_onNewMessageReceived);
+    on<MessageDeliveredEvent>(_onMessageDelivered);
+    on<MessagesReadEvent>(_onMessagesRead);
 
-    _socketSubscription = _socketService.messageStream.listen((message) {
-      add(NewMessageReceivedEvent(message));
+    _socketSubscription = _socketService.messageStream.listen((msg) {
+      add(NewMessageReceivedEvent(msg));
+    });
+
+    _deliveredSubscription = _socketService.deliveredStream.listen((data) {
+      add(MessageDeliveredEvent(
+        messageId: data['message_id']?.toString() ?? '',
+        conversationId: data['conversation_id']?.toString() ?? '',
+      ));
+    });
+
+    _readSubscription = _socketService.readReceiptStream.listen((data) {
+      final ids = List<String>.from(
+        (data['message_ids'] as List? ?? []).map((e) => e.toString()),
+      );
+      add(MessagesReadEvent(
+        messageIds: ids,
+        conversationId: data['conversation_id']?.toString() ?? '',
+      ));
     });
   }
 
-  Future<void> _onFetchConversations(FetchConversationsEvent event, Emitter<ChatState> emit) async {
+  // ── Set which conversation is currently open ──────────────────
+  void _onSetCurrentConversation(
+      SetCurrentConversationEvent event, Emitter<ChatState> emit) {
+    _currentConversationId =
+        event.conversationId.isEmpty ? null : event.conversationId;
+  }
+
+  // ── Conversations list ────────────────────────────────────────
+  Future<void> _onFetchConversations(
+      FetchConversationsEvent event, Emitter<ChatState> emit) async {
     emit(ChatLoading());
     try {
       final conversations = await _repository.fetchConversations();
@@ -31,42 +73,168 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     }
   }
 
-  Future<void> _onFetchMessages(FetchMessagesEvent event, Emitter<ChatState> emit) async {
+  // ── Initial messages load ─────────────────────────────────────
+  Future<void> _onFetchMessages(
+      FetchMessagesEvent event, Emitter<ChatState> emit) async {
     emit(ChatLoading());
     try {
       final messages = await _repository.fetchMessages(event.conversationId);
-      emit(MessagesLoaded(messages));
+      // Tag historical messages with derived status so UI can render ticks
+      final tagged = messages.map((m) {
+        if (m.containsKey('_status')) return m;
+        final isRead = m['is_read'] == true;
+        return <String, dynamic>{...m, '_status': isRead ? 'read' : 'sent'};
+      }).toList();
+      emit(MessagesLoaded(tagged));
     } catch (e) {
       emit(ChatError(e.toString()));
     }
   }
 
-  Future<void> _onSendMessage(SendMessageEvent event, Emitter<ChatState> emit) async {
+  // ── Send message (optimistic) ─────────────────────────────────
+  Future<void> _onSendMessage(
+      SendMessageEvent event, Emitter<ChatState> emit) async {
+    if (state is! MessagesLoaded) return;
+
+    final currentMessages =
+        List<Map<String, dynamic>>.from((state as MessagesLoaded).messages);
+
+    // 1. Optimistically add the message with a temp ID
+    final tempId = 'temp_${DateTime.now().millisecondsSinceEpoch}';
+    final optimistic = <String, dynamic>{
+      'id': tempId,
+      'sender_id': event.myUserId,
+      'content': event.text,
+      'message_type': 'text',
+      '_status': 'sending',
+      'created_at': DateTime.now().toUtc().toIso8601String(),
+      'is_read': false,
+      'conversation_id': event.conversationId,
+    };
+    emit(MessagesLoaded([optimistic, ...currentMessages]));
+
     try {
-      await _repository.sendMessage(event.conversationId, event.text);
-      // Wait for socket to deliver the message back, or handle optimistically
-      add(FetchMessagesEvent(event.conversationId));
+      // 2. Persist to backend
+      final sentMsg = await _repository.sendMessage(event.conversationId, event.text);
+      final realId = sentMsg['id']?.toString() ?? '';
+      if (realId.isNotEmpty) _sentMessageIds.add(realId);
+
+      // Check if a delivered receipt arrived while HTTP was in-flight
+      final wasDelivered = realId.isNotEmpty && _pendingDelivered.remove(realId);
+
+      // 3. Replace optimistic entry with confirmed message from server
+      if (state is! MessagesLoaded) return;
+      final updated = (state as MessagesLoaded).messages.map((m) {
+        if (m['id'] == tempId) {
+          // Honour forward-only status: sending → sent → delivered → read
+          final status = wasDelivered ? 'delivered' : 'sent';
+          return <String, dynamic>{...sentMsg, '_status': status};
+        }
+        return m;
+      }).toList();
+      emit(MessagesLoaded(List<Map<String, dynamic>>.from(updated)));
     } catch (e) {
-      emit(ChatError(e.toString()));
+      // Mark as failed so user knows to retry
+      if (state is! MessagesLoaded) return;
+      final failed = (state as MessagesLoaded).messages.map((m) {
+        if (m['id'] == tempId) {
+          return <String, dynamic>{...m, '_status': 'failed'};
+        }
+        return m;
+      }).toList();
+      emit(MessagesLoaded(List<Map<String, dynamic>>.from(failed)));
     }
   }
 
-  void _onNewMessageReceived(NewMessageReceivedEvent event, Emitter<ChatState> emit) {
-    if (state is MessagesLoaded) {
-      final currentMessages = List<Map<String, dynamic>>.from((state as MessagesLoaded).messages);
-      // Check if message belongs to current conversation (if we are in one)
-      // Note: we might need to handle this more precisely with ID checks
-      currentMessages.insert(0, event.message);
-      emit(MessagesLoaded(currentMessages));
-    } else {
-      // If we are on conversation list, we might want to trigger FetchConversationsEvent
+  // ── Incoming socket message ───────────────────────────────────
+  void _onNewMessageReceived(
+      NewMessageReceivedEvent event, Emitter<ChatState> emit) {
+    final msg = event.message;
+    final msgConvId = msg['conversation_id']?.toString();
+    final msgId = msg['id']?.toString();
+
+    if (state is MessagesLoaded && msgConvId == _currentConversationId) {
+      final currentMessages =
+          List<Map<String, dynamic>>.from((state as MessagesLoaded).messages);
+
+      // Skip if already in list (prevents duplicates)
+      if (msgId != null &&
+          currentMessages.any((m) => m['id']?.toString() == msgId)) return;
+
+      // Skip own messages echoed back from socket (handled optimistically)
+      if (msgId != null && _sentMessageIds.contains(msgId)) {
+        _sentMessageIds.remove(msgId);
+        return;
+      }
+
+      // Add incoming message — receiver sees it as delivered immediately
+      emit(MessagesLoaded([
+        <String, dynamic>{...msg, '_status': 'delivered'},
+        ...currentMessages,
+      ]));
+
+      // User is viewing this chat → mark as read silently so sender gets gold ticks
+      if (msgConvId != null) {
+        _repository.markRead(msgConvId);
+      }
+    } else if (state is ConversationsLoaded || state is ChatInitial) {
+      // User is on the conversations list — refresh badge/preview
       add(FetchConversationsEvent());
     }
+    // If in a different conversation's screen — do nothing (push notification handles it)
+  }
+
+  // ── Delivered receipt (receiver was online when we sent) ──────
+  void _onMessageDelivered(
+      MessageDeliveredEvent event, Emitter<ChatState> emit) {
+    if (event.messageId.isEmpty) return;
+    if (event.conversationId != _currentConversationId) return;
+    if (state is! MessagesLoaded) {
+      // Message may not be in the list yet (still optimistic with temp ID)
+      _pendingDelivered.add(event.messageId);
+      return;
+    }
+
+    final messages = (state as MessagesLoaded).messages;
+    bool found = false;
+    final updated = messages.map((m) {
+      final id = m['id']?.toString();
+      // Only promote forward — never downgrade from 'read'
+      if (id == event.messageId && m['_status'] != 'read') {
+        found = true;
+        return <String, dynamic>{...m, '_status': 'delivered'};
+      }
+      return m;
+    }).toList();
+
+    if (found) {
+      emit(MessagesLoaded(List<Map<String, dynamic>>.from(updated)));
+    } else {
+      // Real message not yet in list (temp ID still in place) — store for later
+      _pendingDelivered.add(event.messageId);
+    }
+  }
+
+  // ── Read receipt (receiver opened the chat) ───────────────────
+  void _onMessagesRead(MessagesReadEvent event, Emitter<ChatState> emit) {
+    if (state is! MessagesLoaded) return;
+    if (event.conversationId != _currentConversationId) return;
+
+    final idSet = Set<String>.from(event.messageIds);
+    final updated = (state as MessagesLoaded).messages.map((m) {
+      if (idSet.contains(m['id']?.toString())) {
+        return <String, dynamic>{...m, '_status': 'read', 'is_read': true};
+      }
+      return m;
+    }).toList();
+    emit(MessagesLoaded(List<Map<String, dynamic>>.from(updated)));
   }
 
   @override
   Future<void> close() {
     _socketSubscription?.cancel();
+    _deliveredSubscription?.cancel();
+    _readSubscription?.cancel();
     return super.close();
   }
 }

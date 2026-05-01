@@ -82,16 +82,34 @@ class _Step6PreferencesState extends OnboardingStepState<Step6Preferences> {
           _denominationFlexible = prefs['denomination_flexible'];
         }
 
-        if (prefs['preferred_denominations'] != null &&
-            prefs['preferred_denominations'] is List &&
-            (prefs['preferred_denominations'] as List).isNotEmpty) {
-          final d = (prefs['preferred_denominations'] as List).first;
-          final key = _denomMap.keys.firstWhere(
-            (k) => _denomMap[k] == d.toString().toLowerCase(),
-            orElse: () => 'Any',
-          );
-          _selectedDenom = key;
-          _denominationFlexible = (key == 'Any' || (prefs['denomination_flexible'] ?? false));
+        if (prefs['preferred_denominations'] != null) {
+          dynamic denoms = prefs['preferred_denominations'];
+          List<dynamic> denomList = [];
+          
+          if (denoms is List) {
+            denomList = denoms;
+          } else if (denoms is String && denoms.isNotEmpty) {
+            denomList = denoms
+                .replaceAll('{', '')
+                .replaceAll('}', '')
+                .split(',')
+                .map((e) => e.trim())
+                .where((e) => e.isNotEmpty)
+                .toList();
+          }
+
+          if (denomList.isNotEmpty) {
+            final d = denomList.first;
+            final key = _denomMap.keys.firstWhere(
+              (k) => _denomMap[k] == d.toString().toLowerCase(),
+              orElse: () => 'Any',
+            );
+            _selectedDenom = key;
+            _denominationFlexible = (key == 'Any' || (prefs['denomination_flexible'] ?? false));
+          } else {
+            _selectedDenom = 'Any';
+            _denominationFlexible = true;
+          }
         } else {
           _selectedDenom = 'Any';
           _denominationFlexible = true;

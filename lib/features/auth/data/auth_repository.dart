@@ -1,4 +1,6 @@
 import 'package:dio/dio.dart';
+import 'dart:io' show Platform;
+import 'package:firebase_messaging/firebase_messaging.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/network/dio_client.dart';
 import '../../../../core/storage/app_storage.dart';
@@ -50,6 +52,16 @@ class AuthRepository {
         accessToken: accessToken,
         refreshToken: refreshToken,
       );
+
+      final user = data['user'];
+      if (user != null) {
+        await AppStorage.saveUserId(user['id']);
+        AppStorage.saveOnboardingComplete(user['is_onboarding_complete'] ?? false);
+        AppStorage.saveReviewStatus(user['review_status']);
+      }
+
+      // Register FCM token right after login so push works for closed app.
+      await syncFcmToken();
       
       return {
         'is_new_user': isNewUser,
@@ -62,9 +74,25 @@ class AuthRepository {
 
   Future<void> updateFcmToken(String fcmToken) async {
     try {
-      await _dio.post(ApiEndpoints.updateFcmToken, data: {'fcm_token': fcmToken});
+      await _dio.put(
+        ApiEndpoints.updateFcmToken,
+        data: {
+          'fcm_token': fcmToken,
+          'device_type': Platform.isIOS ? 'ios' : 'android',
+        },
+      );
     } catch (_) {
       // Background fail-safe
+    }
+  }
+
+  Future<void> syncFcmToken() async {
+    try {
+      final token = await FirebaseMessaging.instance.getToken();
+      if (token == null || token.isEmpty) return;
+      await updateFcmToken(token);
+    } catch (_) {
+      // Best-effort only
     }
   }
 

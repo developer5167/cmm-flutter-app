@@ -17,13 +17,26 @@ class FetchMessagesEvent extends ChatEvent {
   List<Object?> get props => [conversationId];
 }
 
+class SetCurrentConversationEvent extends ChatEvent {
+  final String conversationId;
+  const SetCurrentConversationEvent(this.conversationId);
+
+  @override
+  List<Object?> get props => [conversationId];
+}
+
 class SendMessageEvent extends ChatEvent {
   final String conversationId;
   final String text;
-  const SendMessageEvent({required this.conversationId, required this.text});
+  final String? myUserId;
+  const SendMessageEvent({
+    required this.conversationId,
+    required this.text,
+    this.myUserId,
+  });
 
   @override
-  List<Object?> get props => [conversationId, text];
+  List<Object?> get props => [conversationId, text, myUserId];
 }
 
 class NewMessageReceivedEvent extends ChatEvent {
@@ -32,4 +45,28 @@ class NewMessageReceivedEvent extends ChatEvent {
 
   @override
   List<Object?> get props => [message];
+}
+
+class MessageDeliveredEvent extends ChatEvent {
+  final String messageId;
+  final String conversationId;
+  const MessageDeliveredEvent({
+    required this.messageId,
+    required this.conversationId,
+  });
+
+  @override
+  List<Object?> get props => [messageId, conversationId];
+}
+
+class MessagesReadEvent extends ChatEvent {
+  final List<String> messageIds;
+  final String conversationId;
+  const MessagesReadEvent({
+    required this.messageIds,
+    required this.conversationId,
+  });
+
+  @override
+  List<Object?> get props => [messageIds, conversationId];
 }

@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text_styles.dart';
 import '../../core/storage/app_storage.dart';
+import '../profile/data/profile_repository.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -17,6 +18,7 @@ class _SplashScreenState extends State<SplashScreen>
     with TickerProviderStateMixin {
   late AnimationController _glowController;
   late Animation<double> _glowAnimation;
+  final _profileRepo = ProfileRepository();
 
   @override
   void initState() {
@@ -45,10 +47,34 @@ class _SplashScreenState extends State<SplashScreen>
   }
 
   Future<void> _navigate() async {
-    await Future.delayed(const Duration(milliseconds: 2800));
+    final startTime = DateTime.now();
+    
+    final token = await AppStorage.getAccessToken();
+    
+    if (token != null) {
+      try {
+        // Refresh profile status on every launch
+        final profile = await _profileRepo.fetchMyProfile();
+        if (profile.containsKey('user')) {
+          final user = profile['user'];
+          if (user != null && user is Map) {
+            AppStorage.saveOnboardingComplete(user['is_onboarding_complete'] ?? false);
+            AppStorage.saveReviewStatus(user['review_status']?.toString());
+          }
+        }
+      } catch (e) {
+        debugPrint('Splash Error: $e');
+      }
+    }
+
+    final elapsed = DateTime.now().difference(startTime).inMilliseconds;
+    final remaining = 2800 - elapsed;
+    if (remaining > 0) {
+      await Future.delayed(Duration(milliseconds: remaining));
+    }
+    
     if (!mounted) return;
 
-    final token = await AppStorage.getAccessToken();
     if (token == null) {
       context.go('/auth/phone');
       return;
@@ -59,6 +85,7 @@ class _SplashScreenState extends State<SplashScreen>
       return;
     }
 
+    // Router redirect will handle the review-status check
     context.go('/discover');
   }
 

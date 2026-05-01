@@ -15,6 +15,7 @@ class _Step3PersonalState extends OnboardingStepState<Step3Personal> {
   final _heightCtrl = TextEditingController();
   final _educationCtrl = TextEditingController();
   final _professionCtrl = TextEditingController();
+  final _bioCtrl = TextEditingController();
   String? _salaryRange;
   String? _jobSector;
 
@@ -37,6 +38,7 @@ class _Step3PersonalState extends OnboardingStepState<Step3Personal> {
       'job_sector': _sectorOptions[_jobSector],
       'annual_income_min': _salaryMinMax[_salaryRange]![0],
       'annual_income_max': _salaryMinMax[_salaryRange]![1],
+      'bio': _bioCtrl.text.trim(),
     };
   }
 
@@ -62,6 +64,7 @@ class _Step3PersonalState extends OnboardingStepState<Step3Personal> {
           if (profile['height_cm'] != null) _heightCtrl.text = profile['height_cm'].toString();
           if (profile['education'] != null) _educationCtrl.text = profile['education'];
           if (profile['profession'] != null) _professionCtrl.text = profile['profession'];
+          if (profile['bio'] != null) _bioCtrl.text = profile['bio'];
           
           if (profile['job_sector'] != null) {
             _jobSector = _sectorOptions.entries.cast<MapEntry<String, String>?>().firstWhere((e) => e?.value == profile['job_sector'], orElse: () => null)?.key;
@@ -114,6 +117,17 @@ class _Step3PersonalState extends OnboardingStepState<Step3Personal> {
                 .map((r) => _selectChip(
                     r, _salaryRange, (v) => setState(() => _salaryRange = v)))
                 .toList(),
+          ),
+          const SizedBox(height: 24),
+
+          _fieldLabel('Bio / Self Introduction'),
+          TextField(
+            controller: _bioCtrl,
+            maxLines: 4,
+            style: AppTextStyles.labelLarge,
+            decoration: const InputDecoration(
+              hintText: 'Tell us about yourself, your faith, and what you are looking for in a partner...',
+            ),
           ),
           const SizedBox(height: 40),
         ],

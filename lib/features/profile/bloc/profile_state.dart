@@ -13,10 +13,11 @@ class ProfileLoading extends ProfileState {}
 
 class ProfileLoaded extends ProfileState {
   final Map<String, dynamic> profile;
-  const ProfileLoaded(this.profile);
+  final String? userId;
+  const ProfileLoaded(this.profile, {this.userId});
 
   @override
-  List<Object?> get props => [profile];
+  List<Object?> get props => [profile, userId];
 }
 
 class ProfileError extends ProfileState {

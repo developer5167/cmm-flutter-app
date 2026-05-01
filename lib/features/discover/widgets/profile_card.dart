@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:go_router/go_router.dart';
@@ -27,9 +28,12 @@ class ProfileCard extends StatefulWidget {
 class _ProfileCardState extends State<ProfileCard>
     with SingleTickerProviderStateMixin {
   late AnimationController _dragController;
+  late PageController _pageController;
+  int _currentPhotoIndex = 0;
   Offset _dragOffset = Offset.zero;
   double _rotation = 0;
   bool _isDragging = false;
+  Timer? _photoTimer;
 
   @override
   void initState() {
@@ -38,12 +42,48 @@ class _ProfileCardState extends State<ProfileCard>
       vsync: this,
       duration: const Duration(milliseconds: 300),
     );
+    _pageController = PageController();
+    _startPhotoTimer();
+  }
+
+  void _startPhotoTimer() {
+    _photoTimer?.cancel();
+    _photoTimer = Timer.periodic(const Duration(seconds: 2), (_) {
+      if (!mounted) return;
+      final photos = _extractPhotoUrls();
+      if (photos == null || photos.length <= 1) return;
+      // Only auto-advance when user is not dragging
+      if (_isDragging) return;
+      final nextIndex = (_currentPhotoIndex + 1) % photos.length;
+      _pageController.animateToPage(
+        nextIndex,
+        duration: const Duration(milliseconds: 400),
+        curve: Curves.easeInOut,
+      );
+      setState(() => _currentPhotoIndex = nextIndex);
+    });
   }
 
   @override
   void dispose() {
+    _photoTimer?.cancel();
     _dragController.dispose();
+    _pageController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didUpdateWidget(covariant ProfileCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final oldId = oldWidget.profile['id'] ?? oldWidget.profile['user_id'];
+    final newId = widget.profile['id'] ?? widget.profile['user_id'];
+    if (oldId != newId) {
+      _currentPhotoIndex = 0;
+      if (_pageController.hasClients) {
+        _pageController.jumpToPage(0);
+      }
+      _startPhotoTimer();
+    }
   }
 
   void _onPanStart(DragStartDetails details) {
@@ -90,8 +130,13 @@ class _ProfileCardState extends State<ProfileCard>
         onPanUpdate: widget.onSwipeLeft != null ? _onPanUpdate : null,
         onPanEnd: widget.onSwipeLeft != null ? _onPanEnd : null,
         onTap: () {
-          AppHaptics.light();
-          // Navigate to full profile
+          final id = widget.profile['id'] ?? widget.profile['user_id'];
+          if (id != null) {
+            AppHaptics.light();
+            context.push('/profile/$id');
+          } else {
+            debugPrint('Error: Profile ID is null for ${widget.profile['name']}');
+          }
         },
         child: AnimatedContainer(
           duration: _isDragging
@@ -105,6 +150,34 @@ class _ProfileCardState extends State<ProfileCard>
               children: [
                 // ── Background Photo ─────────────────────────
                 _buildPhoto(),
+
+                // ── Photo Navigation Taps ────────────────────
+                // Only covers the upper 70% to allow tapping the bottom info area to open profile
+                Positioned(
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  bottom: 120,
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: _prevPhoto,
+                          behavior: HitTestBehavior.translucent,
+                        ),
+                      ),
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: _nextPhoto,
+                          behavior: HitTestBehavior.translucent,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                // ── Photo Indicator ──────────────────────────
+                _buildPhotoIndicator(),
 
                 // ── Gradient Overlay ─────────────────────────
                 Container(
@@ -221,11 +294,75 @@ class _ProfileCardState extends State<ProfileCard>
     );
   }
 
-  Widget _buildPhoto() {
-    final photos = widget.profile['photos'] as List?;
-    final photoUrl = photos?.isNotEmpty == true ? photos!.first as String : null;
+  void _nextPhoto() {
+    final photos = _extractPhotoUrls();
+    if (photos == null || photos.length <= 1) return;
 
-    if (photoUrl == null) {
+    if (_currentPhotoIndex < photos.length - 1) {
+      final nextIndex = _currentPhotoIndex + 1;
+      _pageController.animateToPage(
+        nextIndex,
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeInOut,
+      );
+      setState(() => _currentPhotoIndex = nextIndex);
+      AppHaptics.light();
+    }
+  }
+
+  void _prevPhoto() {
+    if (_currentPhotoIndex > 0) {
+      final prevIndex = _currentPhotoIndex - 1;
+      _pageController.animateToPage(
+        prevIndex,
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeInOut,
+      );
+      setState(() => _currentPhotoIndex = prevIndex);
+      AppHaptics.light();
+    }
+  }
+
+  Widget _buildPhotoIndicator() {
+    final photos = _extractPhotoUrls();
+    if (photos == null || photos.length <= 1) return const SizedBox.shrink();
+
+    return Positioned(
+      top: 12,
+      left: 12,
+      right: 12,
+      child: Row(
+        children: List.generate(
+          photos.length,
+          (index) => Expanded(
+            child: Container(
+              height: 3,
+              margin: const EdgeInsets.symmetric(horizontal: 2),
+              decoration: BoxDecoration(
+                color: index == _currentPhotoIndex
+                    ? Colors.white
+                    : Colors.white.withOpacity(0.3),
+                borderRadius: BorderRadius.circular(2),
+                boxShadow: [
+                  if (index == _currentPhotoIndex)
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.2),
+                      blurRadius: 2,
+                      offset: const Offset(0, 1),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPhoto() {
+    final photos = _extractPhotoUrls();
+
+    if (photos == null || photos.isEmpty) {
       return Container(
         color: AppColors.surfaceElevated,
         child: const Center(
@@ -235,22 +372,58 @@ class _ProfileCardState extends State<ProfileCard>
       );
     }
 
-    return CachedNetworkImage(
-      imageUrl: photoUrl,
-      fit: BoxFit.cover,
-      width: double.infinity,
-      height: double.infinity,
-      placeholder: (_, __) => Container(
-        color: AppColors.surfaceElevated,
-        child: const Center(
-          child: CircularProgressIndicator(
-            valueColor: AlwaysStoppedAnimation(AppColors.gold),
-            strokeWidth: 2,
+    return PageView.builder(
+      controller: _pageController,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: photos.length,
+      itemBuilder: (context, index) {
+        return CachedNetworkImage(
+          imageUrl: photos[index],
+          fit: BoxFit.cover,
+          width: double.infinity,
+          height: double.infinity,
+          placeholder: (_, __) => Container(
+            color: AppColors.surfaceElevated,
+            child: const Center(
+              child: CircularProgressIndicator(
+                valueColor: AlwaysStoppedAnimation(AppColors.gold),
+                strokeWidth: 2,
+              ),
+            ),
           ),
-        ),
-      ),
-      fadeInDuration: const Duration(milliseconds: 300),
+          errorWidget: (context, url, error) => Container(
+            color: AppColors.surfaceElevated,
+            child: const Icon(Icons.broken_image_rounded, color: AppColors.textTertiary),
+          ),
+          fadeInDuration: const Duration(milliseconds: 300),
+        );
+      },
     );
+  }
+
+  List<String>? _extractPhotoUrls() {
+    final photos = widget.profile['photos'] as List?;
+    if (photos == null) return null;
+
+    final urls = <String>[];
+    for (final photo in photos) {
+      if (photo is String) {
+        if (photo.isNotEmpty) urls.add(photo);
+        continue;
+      }
+
+      if (photo is Map) {
+        final photoMap = photo.cast<dynamic, dynamic>();
+        final url = photoMap['url']?.toString() ??
+            photoMap['photo_url']?.toString() ??
+            photoMap['image_url']?.toString() ??
+            photoMap['secure_url']?.toString() ??
+            photoMap['file_url']?.toString();
+        if (url != null && url.isNotEmpty) urls.add(url);
+      }
+    }
+
+    return urls;
   }
 
   Widget _trustBadge() {

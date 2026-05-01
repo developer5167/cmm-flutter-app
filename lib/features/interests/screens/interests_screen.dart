@@ -5,6 +5,7 @@ import '../../../core/theme/app_text_styles.dart';
 import '../bloc/interests_bloc.dart';
 import '../bloc/interests_event.dart';
 import '../bloc/interests_state.dart';
+import 'package:go_router/go_router.dart';
 
 class InterestsScreen extends StatefulWidget {
   const InterestsScreen({super.key});
@@ -71,9 +72,27 @@ class _InterestsScreenState extends State<InterestsScreen> with SingleTickerProv
             ? TabBarView(
                 controller: _tabController,
                 children: [
-                  _buildInterestList(state.received, isReceived: true),
-                  _buildInterestList(state.matches, isMatch: true),
-                  _buildInterestList(state.sent),
+                  RefreshIndicator(
+                    onRefresh: () async {
+                      context.read<InterestsBloc>().add(FetchInterestsEvent());
+                    },
+                    color: AppColors.gold,
+                    child: _buildInterestList(state.received, isReceived: true),
+                  ),
+                  RefreshIndicator(
+                    onRefresh: () async {
+                      context.read<InterestsBloc>().add(FetchInterestsEvent());
+                    },
+                    color: AppColors.gold,
+                    child: _buildInterestList(state.matches, isMatch: true),
+                  ),
+                  RefreshIndicator(
+                    onRefresh: () async {
+                      context.read<InterestsBloc>().add(FetchInterestsEvent());
+                    },
+                    color: AppColors.gold,
+                    child: _buildInterestList(state.sent),
+                  ),
                 ],
               )
             : const SizedBox.shrink(),
@@ -86,7 +105,16 @@ class _InterestsScreenState extends State<InterestsScreen> with SingleTickerProv
     if (items.isEmpty) {
       String title = isMatch ? 'No matches yet' : (isReceived ? 'No interests received' : 'No interests sent');
       String desc = isMatch ? 'Keep exploring the discover feed.' : 'You haven\'t received any likes recently.';
-      return _buildEmptyTab(title, desc);
+      return LayoutBuilder(
+        builder: (context, constraints) => SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          child: Container(
+            height: constraints.maxHeight,
+            alignment: Alignment.center,
+            child: _buildEmptyTab(title, desc),
+          ),
+        ),
+      );
     }
 
     return ListView.builder(
@@ -94,95 +122,125 @@ class _InterestsScreenState extends State<InterestsScreen> with SingleTickerProv
       itemCount: items.length,
       itemBuilder: (context, index) {
         final profile = items[index];
-        return Container(
-          margin: const EdgeInsets.only(left: 24, right: 24, bottom: 16),
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: AppColors.surfaceElevated,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: AppColors.surfaceHighest),
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 70,
-                height: 70,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: AppColors.surfaceHighest,
-                  border: Border.all(color: AppColors.goldMild, width: 2),
+        return GestureDetector(
+          onTap: () {
+            final id =
+                profile['profile_id']?.toString() ??
+                profile['user_id']?.toString() ??
+                profile['id']?.toString();
+            if (id != null && id.isNotEmpty) {
+              context.push('/profile/$id?source=interests');
+            }
+          },
+          child: Container(
+            margin: const EdgeInsets.only(left: 24, right: 24, bottom: 16),
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: AppColors.surfaceElevated,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: AppColors.surfaceHighest),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 70,
+                  height: 70,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: AppColors.surfaceHighest,
+                    border: Border.all(color: AppColors.goldMild, width: 2),
+                    image: profile['photo_url'] != null 
+                      ? DecorationImage(
+                          image: NetworkImage(profile['photo_url']),
+                          fit: BoxFit.cover,
+                        )
+                      : null,
+                  ),
+                  child: profile['photo_url'] == null 
+                    ? const Icon(Icons.person, color: AppColors.textTertiary, size: 36)
+                    : null,
                 ),
-                child: const Icon(Icons.person, color: AppColors.textTertiary, size: 36),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('${profile['name'] ?? 'Sarah'}, ${profile['age'] ?? 24}', style: AppTextStyles.labelLarge),
-                    const SizedBox(height: 4),
-                    Text('${profile['denomination'] ?? 'CSI'} • ${profile['profession'] ?? 'Teacher'}', style: AppTextStyles.bodySmall),
-                    if (isReceived) ...[
-                      const SizedBox(height: 12),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: ElevatedButton(
-                              onPressed: () {
-                                context.read<InterestsBloc>().add(InterestActionEvent(
-                                  interestId: profile['id'].toString(),
-                                  accept: true,
-                                ));
-                              },
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: AppColors.gold,
-                                foregroundColor: AppColors.textOnGold,
-                                minimumSize: const Size(0, 36),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('${profile['name'] ?? 'Sarah'}, ${profile['age'] ?? 24}', style: AppTextStyles.labelLarge),
+                      const SizedBox(height: 4),
+                      Text('${profile['denomination'] ?? 'CSI'} • ${profile['profession'] ?? 'Teacher'}', style: AppTextStyles.bodySmall),
+                      if (isReceived) ...[
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: ElevatedButton(
+                                onPressed: () {
+                                  context.read<InterestsBloc>().add(InterestActionEvent(
+                                    interestId: profile['interest_id'].toString(),
+                                    accept: true,
+                                  ));
+                                },
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: AppColors.gold,
+                                  foregroundColor: AppColors.textOnGold,
+                                  minimumSize: const Size(0, 36),
+                                ),
+                                child: const Text('Accept'),
                               ),
-                              child: const Text('Accept'),
                             ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: OutlinedButton(
-                              onPressed: () {
-                                context.read<InterestsBloc>().add(InterestActionEvent(
-                                  interestId: profile['id'].toString(),
-                                  accept: false,
-                                ));
-                              },
-                              style: OutlinedButton.styleFrom(
-                                foregroundColor: AppColors.textSecondary,
-                                side: const BorderSide(color: AppColors.surfaceHighest),
-                                minimumSize: const Size(0, 36),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: OutlinedButton(
+                                onPressed: () {
+                                  context.read<InterestsBloc>().add(InterestActionEvent(
+                                    interestId: profile['interest_id'].toString(),
+                                    accept: false,
+                                  ));
+                                },
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: AppColors.textSecondary,
+                                  side: const BorderSide(color: AppColors.surfaceHighest),
+                                  minimumSize: const Size(0, 36),
+                                ),
+                                child: const Text('Decline'),
                               ),
-                              child: const Text('Decline'),
                             ),
-                          ),
-                        ],
-                      ),
-                    ],
-                    if (isMatch) ...[
-                      const SizedBox(height: 12),
-                      SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton(
-                          onPressed: () {
-                            // Navigate to Chat
-                          },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppColors.goldSubtle,
-                            foregroundColor: AppColors.gold,
-                            minimumSize: const Size(0, 36),
-                          ),
-                          child: const Text('Message'),
+                          ],
                         ),
-                      ),
-                    ]
-                  ],
+                      ],
+                      if (isMatch) ...[
+                        const SizedBox(height: 12),
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton(
+                            onPressed: () {
+                              final convId = profile['conversation_id']?.toString();
+                              if (convId != null) {
+                                final profileId =
+                                    profile['profile_id']?.toString() ??
+                                    profile['user_id']?.toString() ??
+                                    profile['id']?.toString();
+                                context.push('/chat/$convId', extra: {
+                                  'name': profile['name'],
+                                  'photo': profile['photo_url'],
+                                  'userId': profileId,
+                                });
+                              }
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.goldSubtle,
+                              foregroundColor: AppColors.gold,
+                              minimumSize: const Size(0, 36),
+                            ),
+                            child: const Text('Message'),
+                          ),
+                        ),
+                      ]
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         );
       },

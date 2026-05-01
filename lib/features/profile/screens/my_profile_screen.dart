@@ -40,14 +40,25 @@ class _MyProfileScreenState extends State<MyProfileScreen> {
           );
         }
 
-        final profile = state is ProfileLoaded ? state.profile : <String, dynamic>{};
+        final data = state is ProfileLoaded ? state.profile : <String, dynamic>{};
+        final profile = data['profile'] as Map<String, dynamic>? ?? {};
+        
         final name = profile['first_name'] ?? profile['full_name'] ?? 'User';
-        final age = profile['age'] ?? 26;
+        final dob = profile['date_of_birth'] != null ? DateTime.parse(profile['date_of_birth'].toString()) : null;
+        final age = dob != null ? (DateTime.now().year - dob.year) : 26;
         final denomination = profile['denomination'] ?? 'CSI';
         final profession = profile['profession'] ?? 'Software Engineer';
-        final photos = profile['photos'] as List? ?? [];
-        final photoUrl = photos.isNotEmpty ? photos[0] : null;
-        final isVerified = profile['is_id_verified'] ?? false;
+        final photos = data['photos'] as List? ?? [];
+        String? photoUrl;
+        if (photos.isNotEmpty) {
+          final firstPhoto = photos[0];
+          if (firstPhoto is Map) {
+            photoUrl = firstPhoto['photo_url'] as String?;
+          } else if (firstPhoto is String) {
+            photoUrl = firstPhoto;
+          }
+        }
+        final isVerified = profile['is_id_verified'] ?? profile['trust_badge'] ?? false;
         final hasVideo = profile['video_selfie_url'] != null;
 
         return Scaffold(
@@ -91,19 +102,7 @@ class _MyProfileScreenState extends State<MyProfileScreen> {
                                   ? const Center(child: Icon(Icons.person, size: 60, color: AppColors.textTertiary))
                                   : null,
                               ),
-                              Positioned(
-                                bottom: 0,
-                                right: 0,
-                                child: Container(
-                                  padding: const EdgeInsets.all(8),
-                                  decoration: BoxDecoration(
-                                    color: AppColors.gold,
-                                    shape: BoxShape.circle,
-                                    border: Border.all(color: AppColors.background, width: 2),
-                                  ),
-                                  child: const Icon(Icons.camera_alt_rounded, size: 16, color: AppColors.textOnGold),
-                                ),
-                              ),
+
                             ],
                           ),
                         ),
@@ -121,6 +120,19 @@ class _MyProfileScreenState extends State<MyProfileScreen> {
                         const SizedBox(height: 4),
                         Text('$denomination • $profession', style: AppTextStyles.bodyMedium.copyWith(color: AppColors.textSecondary)),
                         
+                        const SizedBox(height: 16),
+                        OutlinedButton.icon(
+                          onPressed: () => context.push('/profile/preview'),
+                          icon: const Icon(Icons.remove_red_eye_rounded, size: 18),
+                          label: const Text('Preview as Public'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: AppColors.gold,
+                            side: const BorderSide(color: AppColors.goldMild),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(100)),
+                            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                          ),
+                        ),
+
                         if (hasVideo) ...[
                           const SizedBox(height: 12),
                           Container(

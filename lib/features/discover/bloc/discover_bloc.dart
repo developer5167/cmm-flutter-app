@@ -33,9 +33,9 @@ class DiscoverBloc extends Bloc<DiscoverEvent, DiscoverState> {
       } else {
         await _repository.passProfile(event.targetUserId);
       }
-    } catch (_) {
-      // Swipes shouldn't interrupt the feed silently dropping them is better 
-      // or queuing them locally for retry
+    } catch (e) {
+      // Swipes shouldn't interrupt the feed, but we should log errors for debugging
+      print('Swipe Error: $e');
     }
   }
 }

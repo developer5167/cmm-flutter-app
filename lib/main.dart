@@ -5,10 +5,12 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'core/storage/app_storage.dart';
+import 'core/state/active_chat_state.dart';
 import 'core/router/app_router.dart';
 import 'core/theme/app_theme.dart';
 import 'core/di/injection.dart' as di;
 import 'core/network/socket_service.dart';
+import 'features/auth/data/auth_repository.dart';
 import 'features/auth/bloc/auth_bloc.dart';
 import 'features/onboarding/bloc/onboarding_bloc.dart';
 import 'features/discover/bloc/discover_bloc.dart';
@@ -18,9 +20,12 @@ import 'features/chat/bloc/chat_bloc.dart';
 import 'features/subscriptions/bloc/subscription_bloc.dart';
 import 'firebase_options.dart';
 
-// Background message handler
+// Background message handler — must be top-level, called when app is killed/background.
+@pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  await Firebase.initializeApp();
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  // No UI work here — system tray notification is shown automatically by FCM
+  // when the backend sends both notification + data payloads.
 }
 
 Future<void> main() async {
@@ -35,24 +40,75 @@ await Firebase.initializeApp(
   // Initialize DI
   di.init();
 
+  // Init storage before any authenticated network calls (e.g. FCM token sync)
+  await AppStorage.init();
+
   // FCM Setup
   final messaging = FirebaseMessaging.instance;
   await messaging.requestPermission(alert: true, badge: true, sound: true);
+  await messaging.setForegroundNotificationPresentationOptions(
+    alert: true,
+    badge: true,
+    sound: true,
+  );
 
   // Local Notifications for foreground
   final flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
   const initializationSettingsAndroid = AndroidInitializationSettings('@mipmap/ic_launcher');
   await flutterLocalNotificationsPlugin.initialize(const InitializationSettings(android: initializationSettingsAndroid));
+  const androidChannel = AndroidNotificationChannel(
+    'gracematch_default',
+    'General',
+    description: 'General notifications for GraceMatch',
+    importance: Importance.high,
+  );
+  await flutterLocalNotificationsPlugin
+      .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+      ?.createNotificationChannel(androidChannel);
 
   FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-    if (message.notification != null) {
+    // Suppress if the user is already inside the conversation this message belongs to
+    final incomingConvId = message.data['conversation_id'];
+    if (incomingConvId != null &&
+        incomingConvId == ActiveChatState.conversationId) {
+      return; // Socket already delivered it live — no duplicate notification
+    }
+
+    final notification = message.notification;
+    if (notification != null) {
       flutterLocalNotificationsPlugin.show(
         message.hashCode,
-        message.notification!.title,
-        message.notification!.body,
-        const NotificationDetails(android: AndroidNotificationDetails('gracematch_default', 'General')),
+        notification.title,
+        notification.body,
+        const NotificationDetails(
+          android: AndroidNotificationDetails(
+            'gracematch_default',
+            'General',
+            channelDescription: 'General notifications for GraceMatch',
+            importance: Importance.high,
+            priority: Priority.high,
+            playSound: true,
+            enableVibration: true,
+          ),
+        ),
       );
     }
+  });
+
+  // Sync FCM token for logged-in user on app start.
+  final authRepository = AuthRepository();
+  final startupToken = await FirebaseMessaging.instance.getToken();
+  if (startupToken != null && startupToken.isNotEmpty) {
+    debugPrint('FCM_TOKEN: $startupToken');
+    await authRepository.updateFcmToken(startupToken);
+  } else {
+    debugPrint('FCM_TOKEN: <null>');
+  }
+
+  // Keep backend token updated when FCM rotates token.
+  FirebaseMessaging.instance.onTokenRefresh.listen((token) async {
+    debugPrint('FCM_TOKEN_REFRESHED: $token');
+    await authRepository.updateFcmToken(token);
   });
 
   // Connect Sockets
@@ -74,9 +130,6 @@ await Firebase.initializeApp(
 
   // Enable edge-to-edge rendering
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-
-  // Init storage
-  await AppStorage.init();
 
   // Init router (needs async for token check)
   await AppRouter.init();
