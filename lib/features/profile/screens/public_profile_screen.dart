@@ -1,10 +1,10 @@
+import 'dart:ui' show ImageFilter;
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/utils/app_haptics.dart';
-import '../../../core/constants/app_constants.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:smooth_page_indicator/smooth_page_indicator.dart';
 import '../../../core/widgets/full_screen_gallery.dart';
@@ -12,6 +12,8 @@ import '../bloc/profile_bloc.dart';
 import '../bloc/profile_state.dart';
 import '../bloc/profile_event.dart';
 import '../../../core/storage/app_storage.dart';
+import '../../activity/bloc/activity_bloc.dart';
+import '../../activity/bloc/activity_event.dart';
 
 class PublicProfileScreen extends StatefulWidget {
   final String? userId; // If null, shows own profile preview
@@ -81,7 +83,20 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
     }
   }
 
-  Future<void> _openGallery(List<String> photos) async {
+  Future<void> _openGallery(List<String> photos, {required bool imagesLocked}) async {
+    if (imagesLocked) {
+      if (!mounted) return;
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          content: Text(
+            'Photos unlock once you connect.',
+            style: AppTextStyles.bodySmall.copyWith(color: Colors.white),
+          ),
+        ),
+      );
+      return;
+    }
     final selectedIndex = await Navigator.push<int>(
       context,
       MaterialPageRoute(
@@ -199,6 +214,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
         final data = state is ProfileLoaded ? state.profile : <String, dynamic>{};
         final profile = data['profile'] as Map<String, dynamic>? ?? {};
         final family = data['family'] as Map<String, dynamic>? ?? {};
+        final imagesLocked = data['is_images_locked'] == true;
         final photos = _extractPhotoUrls(data, profile);
         if (_currentPhotoIndex >= photos.length && photos.isNotEmpty) {
           _currentPhotoIndex = photos.length - 1;
@@ -226,6 +242,8 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
         }
 
 
+        final viewedUserId = widget.userId;
+
         return Scaffold(
           backgroundColor: AppColors.background,
           body: CustomScrollView(
@@ -234,6 +252,27 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                 expandedHeight: 480,
                 pinned: true,
                 backgroundColor: AppColors.background,
+                actions: viewedUserId != null
+                    ? [
+                        IconButton(
+                          tooltip: 'Shortlist',
+                          icon: const Icon(Icons.star_border_rounded, color: AppColors.gold),
+                          onPressed: () {
+                            AppHaptics.medium();
+                            context
+                                .read<ActivityBloc>()
+                                .add(ToggleShortlistEvent(viewedUserId));
+                            ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+                              const SnackBar(
+                                behavior: SnackBarBehavior.floating,
+                                content: Text('Shortlist updated'),
+                                duration: Duration(seconds: 2),
+                              ),
+                            );
+                          },
+                        ),
+                      ]
+                    : null,
                 flexibleSpace: FlexibleSpaceBar(
                   background: Stack(
                     fit: StackFit.expand,
@@ -249,12 +288,10 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                                 setState(() => _currentPhotoIndex = index);
                               },
                               itemBuilder: (context, index) => GestureDetector(
-                                onTap: () => _openGallery(photos),
-                                child: CachedNetworkImage(
-                                  imageUrl: photos[index],
-                                  fit: BoxFit.cover,
-                                  placeholder: (context, url) => const Center(child: CircularProgressIndicator(color: AppColors.gold)),
-                                  errorWidget: (context, url, error) => const Icon(Icons.broken_image, color: Colors.white),
+                                onTap: () => _openGallery(photos, imagesLocked: imagesLocked),
+                                child: _PublicProfilePhotoTile(
+                                  url: photos[index],
+                                  locked: imagesLocked,
                                 ),
                               ),
                             ),
@@ -509,6 +546,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
     final status = data['interaction_status'] ?? 'none';
     final senderId = data['interaction_sender_id']?.toString();
     final interestId = data['interest_id']?.toString();
+    final conversationId = data['conversation_id']?.toString();
     final isReceiver = senderId != null && senderId != _myUserId;
 
     if (status == 'none') {
@@ -619,18 +657,43 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
     if (status == 'accepted') {
       return Container(
         padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
+        decoration: BoxDecoration(color: AppColors.background.withOpacity(0.95)),
         child: ElevatedButton(
           onPressed: () {
-            // Navigation to chat could be added here
+            AppHaptics.heavy();
+            if (conversationId != null) {
+              // Navigate directly to the conversation
+              final otherName = data['profile'] is Map
+                  ? (data['profile'] as Map)['first_name']?.toString()
+                  : null;
+              context.push(
+                '/chat/$conversationId',
+                extra: {
+                  'name': otherName ?? 'Match',
+                  'userId': widget.userId,
+                },
+              );
+            } else {
+              // Conversation ID missing — go to conversations list
+              context.go('/chat');
+            }
           },
           style: ElevatedButton.styleFrom(
-            backgroundColor: AppColors.goldSubtle,
-            foregroundColor: AppColors.gold,
+            backgroundColor: AppColors.gold,
+            foregroundColor: AppColors.textOnGold,
             padding: const EdgeInsets.symmetric(vertical: 16),
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           ),
-          child: const Center(
-            child: Text('MATCHED! SEND MESSAGE', style: TextStyle(fontWeight: FontWeight.bold)),
+          child: const Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.chat_bubble_rounded, size: 20),
+              SizedBox(width: 10),
+              Text(
+                'SEND MESSAGE',
+                style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1),
+              ),
+            ],
           ),
         ),
       );
@@ -684,6 +747,51 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
           Text(value, style: AppTextStyles.labelLarge, maxLines: 1, overflow: TextOverflow.ellipsis),
         ],
       ),
+    );
+  }
+}
+
+class _PublicProfilePhotoTile extends StatelessWidget {
+  final String url;
+  final bool locked;
+
+  const _PublicProfilePhotoTile({required this.url, required this.locked});
+
+  @override
+  Widget build(BuildContext context) {
+    final base = CachedNetworkImage(
+      imageUrl: url,
+      fit: BoxFit.cover,
+      placeholder: (context, url) =>
+          const Center(child: CircularProgressIndicator(color: AppColors.gold)),
+      errorWidget: (context, url, error) => const Icon(Icons.broken_image, color: Colors.white),
+    );
+    if (!locked) return base;
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        ImageFiltered(
+          imageFilter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+          child: base,
+        ),
+        Center(
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: Colors.black54,
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.lock_rounded, color: Colors.white.withOpacity(0.9), size: 16),
+                const SizedBox(width: 6),
+                Text('Locked', style: AppTextStyles.labelSmall.copyWith(color: Colors.white)),
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

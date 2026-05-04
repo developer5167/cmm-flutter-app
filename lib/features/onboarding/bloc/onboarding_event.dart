@@ -18,13 +18,3 @@ class SaveStepEvent extends OnboardingEvent {
   @override
   List<Object?> get props => [step, data];
 }
-
-class UploadPhotoEvent extends OnboardingEvent {
-  final String filePath;
-  final int index;
-
-  const UploadPhotoEvent(this.filePath, this.index);
-
-  @override
-  List<Object?> get props => [filePath, index];
-}

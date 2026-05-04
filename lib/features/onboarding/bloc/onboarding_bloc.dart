@@ -9,7 +9,6 @@ class OnboardingBloc extends Bloc<OnboardingEvent, OnboardingState> {
   OnboardingBloc(this._repository) : super(OnboardingInitial()) {
     on<LoadStatusEvent>(_onLoadStatus);
     on<SaveStepEvent>(_onSaveStep);
-    on<UploadPhotoEvent>(_onUploadPhoto);
   }
 
   Future<void> _onLoadStatus(LoadStatusEvent event, Emitter<OnboardingState> emit) async {
@@ -25,18 +24,26 @@ class OnboardingBloc extends Bloc<OnboardingEvent, OnboardingState> {
   Future<void> _onSaveStep(SaveStepEvent event, Emitter<OnboardingState> emit) async {
     emit(OnboardingLoading());
     try {
-      await _repository.saveStep(event.step, event.data);
-      emit(StepSavedSuccess(event.step));
-    } catch (e) {
-      emit(OnboardingError(e.toString()));
-    }
-  }
+      if (event.step == 8) {
+        // Deferred photo upload: delete removed photos first, then upload new ones
+        final deletedIds = (event.data['_deletedPhotoIds'] as List?)?.cast<String>() ?? [];
+        final localPaths = (event.data['_localPhotoPaths'] as List?)?.cast<String>() ?? [];
 
-  Future<void> _onUploadPhoto(UploadPhotoEvent event, Emitter<OnboardingState> emit) async {
-    emit(OnboardingLoading());
-    try {
-      await _repository.uploadPhoto(event.filePath, event.index);
-      emit(PhotoUploadedSuccess(event.index));
+        for (final id in deletedIds) {
+          await _repository.deletePhoto(id);
+        }
+        await _repository.uploadPhotos(localPaths);
+      } else if (event.step == 9) {
+        final videoPath = event.data['verification_video_path'] as String?;
+        if (videoPath != null && videoPath.isNotEmpty) {
+          await _repository.submitIdentityVerification(videoPath);
+        } else {
+          await _repository.saveStep(event.step, {});
+        }
+      } else {
+        await _repository.saveStep(event.step, event.data);
+      }
+      emit(StepSavedSuccess(event.step));
     } catch (e) {
       emit(OnboardingError(e.toString()));
     }

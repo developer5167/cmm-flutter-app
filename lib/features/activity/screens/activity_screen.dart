@@ -1,0 +1,643 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:flutter_animate/flutter_animate.dart';
+import 'package:go_router/go_router.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+
+import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/app_text_styles.dart';
+import '../../../core/utils/app_haptics.dart';
+import '../bloc/activity_bloc.dart';
+import '../bloc/activity_event.dart';
+import '../bloc/activity_state.dart';
+
+class ActivityScreen extends StatefulWidget {
+  const ActivityScreen({super.key});
+
+  @override
+  State<ActivityScreen> createState() => _ActivityScreenState();
+}
+
+class _ActivityScreenState extends State<ActivityScreen>
+    with SingleTickerProviderStateMixin {
+  late TabController _tabController;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 3, vsync: this);
+    context.read<ActivityBloc>().add(const FetchActivityEvent());
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return BlocBuilder<ActivityBloc, ActivityState>(
+      builder: (context, state) {
+        final loaded = state is ActivityLoaded ? state : null;
+        final unread = loaded?.unreadNotifications ?? 0;
+
+        return Scaffold(
+          backgroundColor: AppColors.background,
+          appBar: AppBar(
+            backgroundColor: AppColors.background,
+            centerTitle: false,
+            title: Text('Activity', style: AppTextStyles.headlineLarge),
+            actions: [
+              if (unread > 0)
+                TextButton.icon(
+                  onPressed: () {
+                    AppHaptics.light();
+                    context.read<ActivityBloc>().add(const MarkAllReadEvent());
+                  },
+                  icon: const Icon(Icons.done_all_rounded, size: 18, color: AppColors.gold),
+                  label: Text('Mark all read',
+                      style: AppTextStyles.labelSmall.copyWith(color: AppColors.gold)),
+                ),
+              const SizedBox(width: 8),
+            ],
+            bottom: TabBar(
+              controller: _tabController,
+              indicatorColor: AppColors.gold,
+              labelColor: AppColors.gold,
+              unselectedLabelColor: AppColors.textSecondary,
+              labelStyle: AppTextStyles.labelMedium,
+              dividerColor: AppColors.surfaceHighest,
+              tabs: [
+                Tab(
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Text('Notifications'),
+                      if (unread > 0) ...[
+                        const SizedBox(width: 6),
+                        _badge(unread),
+                      ],
+                    ],
+                  ),
+                ),
+                const Tab(text: 'Views'),
+                const Tab(text: 'Shortlisted'),
+              ],
+            ),
+          ),
+          body: state is ActivityLoading
+              ? const Center(child: CircularProgressIndicator(color: AppColors.gold))
+              : state is ActivityError
+                  ? _buildError(state.message)
+                  : TabBarView(
+                      controller: _tabController,
+                      children: [
+                        _NotificationsTab(
+                          notifications: loaded?.notifications ?? [],
+                          onRefresh: () {
+                            context.read<ActivityBloc>().add(const FetchNotificationsEvent());
+                          },
+                        ),
+                        _ViewsTab(
+                          viewers: loaded?.viewers ?? [],
+                          totalViews: loaded?.totalViews ?? 0,
+                          isPremiumRequired: loaded?.viewsPremiumRequired ?? false,
+                          onRefresh: () {
+                            context.read<ActivityBloc>().add(const FetchViewsEvent());
+                          },
+                        ),
+                        _ShortlistsTab(
+                          profiles: loaded?.shortlists ?? [],
+                          onRefresh: () {
+                            context.read<ActivityBloc>().add(const FetchShortlistsEvent());
+                          },
+                        ),
+                      ],
+                    ),
+        );
+      },
+    );
+  }
+
+  Widget _badge(int count) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: AppColors.gold,
+        borderRadius: BorderRadius.circular(100),
+      ),
+      child: Text(
+        count > 99 ? '99+' : '$count',
+        style: AppTextStyles.labelSmall.copyWith(
+          color: AppColors.textOnGold,
+          fontSize: 10,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildError(String msg) => Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.wifi_off_rounded, color: AppColors.textTertiary, size: 48),
+            const SizedBox(height: 12),
+            Text(msg, style: AppTextStyles.bodyMedium),
+            const SizedBox(height: 16),
+            TextButton(
+              onPressed: () => context.read<ActivityBloc>().add(const FetchActivityEvent()),
+              child: Text('Retry', style: AppTextStyles.labelMedium.copyWith(color: AppColors.gold)),
+            ),
+          ],
+        ),
+      );
+}
+
+// ───────────────────────────────────────────────────────────────
+// NOTIFICATIONS TAB
+// ───────────────────────────────────────────────────────────────
+class _NotificationsTab extends StatelessWidget {
+  final List<Map<String, dynamic>> notifications;
+  final VoidCallback onRefresh;
+
+  const _NotificationsTab({required this.notifications, required this.onRefresh});
+
+  @override
+  Widget build(BuildContext context) {
+    if (notifications.isEmpty) {
+      return _emptyState(
+        icon: Icons.notifications_none_rounded,
+        title: 'No notifications yet',
+        subtitle: 'Interests, views, and messages will appear here.',
+      );
+    }
+
+    return RefreshIndicator(
+      onRefresh: () async => onRefresh(),
+      color: AppColors.gold,
+      child: ListView.separated(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
+        itemCount: notifications.length,
+        separatorBuilder: (_, __) => const SizedBox(height: 8),
+        itemBuilder: (context, i) {
+          final n = notifications[i];
+          final isRead = n['is_read'] == true;
+          return _NotifTile(n: n, isRead: isRead)
+              .animate()
+              .fadeIn(duration: 300.ms, delay: (i * 40).ms);
+        },
+      ),
+    );
+  }
+}
+
+class _NotifTile extends StatelessWidget {
+  final Map<String, dynamic> n;
+  final bool isRead;
+  const _NotifTile({required this.n, required this.isRead});
+
+  @override
+  Widget build(BuildContext context) {
+    final type = n['type']?.toString() ?? '';
+    return Material(
+      color: isRead ? AppColors.surfaceElevated : AppColors.goldSubtle,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: () {
+          AppHaptics.light();
+          if (!isRead) {
+            context.read<ActivityBloc>().add(MarkOneReadEvent(n['id'].toString()));
+          }
+          _handleTap(context, type, n['data']);
+        },
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _typeIcon(type),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      n['title']?.toString() ?? '',
+                      style: AppTextStyles.labelLarge.copyWith(
+                        color: isRead ? AppColors.textSecondary : AppColors.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      n['body']?.toString() ?? '',
+                      style: AppTextStyles.bodySmall,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      _relativeTime(n['created_at']?.toString()),
+                      style: AppTextStyles.labelSmall,
+                    ),
+                  ],
+                ),
+              ),
+              if (!isRead)
+                Container(
+                  width: 8,
+                  height: 8,
+                  margin: const EdgeInsets.only(top: 4, left: 8),
+                  decoration: const BoxDecoration(
+                    color: AppColors.gold,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _typeIcon(String type) {
+    IconData icon;
+    Color color;
+    switch (type) {
+      case 'interest_received':
+        icon = Icons.favorite_rounded;
+        color = AppColors.rose;
+        break;
+      case 'interest_accepted':
+        icon = Icons.check_circle_rounded;
+        color = AppColors.blessing;
+        break;
+      case 'new_message':
+        icon = Icons.chat_bubble_rounded;
+        color = AppColors.cross;
+        break;
+      case 'profile_viewed':
+        icon = Icons.visibility_rounded;
+        color = AppColors.gold;
+        break;
+      case 'shortlisted':
+        icon = Icons.star_rounded;
+        color = AppColors.gold;
+        break;
+      case 'contact_request':
+        icon = Icons.contact_phone_rounded;
+        color = AppColors.warning;
+        break;
+      default:
+        icon = Icons.notifications_rounded;
+        color = AppColors.textSecondary;
+    }
+    return Container(
+      width: 40,
+      height: 40,
+      decoration: BoxDecoration(
+        color: color.withAlpha(30),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Icon(icon, color: color, size: 20),
+    );
+  }
+
+  void _handleTap(BuildContext context, String type, dynamic data) {
+    final d = data is Map ? Map<String, dynamic>.from(data) : <String, dynamic>{};
+    switch (type) {
+      case 'interest_received':
+        // Open the sender's profile — bottom bar shows Accept / Decline
+        final senderId = d['sender_id']?.toString();
+        if (senderId != null) context.push('/profile/$senderId');
+        break;
+      case 'interest_accepted':
+        // They accepted → go straight to conversations
+        final convId = d['conversation_id']?.toString();
+        if (convId != null) {
+          context.push('/chat/$convId', extra: {'name': 'Match'});
+        } else {
+          context.go('/chat');
+        }
+        break;
+      case 'new_message':
+        final convId = d['conversation_id']?.toString();
+        if (convId != null) {
+          context.push('/chat/$convId', extra: {'name': 'Message'});
+        } else {
+          context.go('/chat');
+        }
+        break;
+      case 'profile_viewed':
+      case 'shortlisted':
+        final actorId = d['actor_id']?.toString();
+        if (actorId != null) context.push('/profile/$actorId');
+        break;
+      case 'contact_request':
+        // Go to conversations list, owner can decide there
+        context.go('/chat');
+        break;
+      default:
+        break;
+    }
+  }
+
+  String _relativeTime(String? raw) {
+    if (raw == null) return '';
+    try {
+      final dt = DateTime.parse(raw).toLocal();
+      final diff = DateTime.now().difference(dt);
+      if (diff.inMinutes < 1) return 'just now';
+      if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+      if (diff.inHours < 24) return '${diff.inHours}h ago';
+      if (diff.inDays < 7) return '${diff.inDays}d ago';
+      return '${dt.day}/${dt.month}/${dt.year}';
+    } catch (_) {
+      return '';
+    }
+  }
+}
+
+// ───────────────────────────────────────────────────────────────
+// VIEWS TAB
+// ───────────────────────────────────────────────────────────────
+class _ViewsTab extends StatelessWidget {
+  final List<Map<String, dynamic>> viewers;
+  final int totalViews;
+  final bool isPremiumRequired;
+  final VoidCallback onRefresh;
+
+  const _ViewsTab({
+    required this.viewers,
+    required this.totalViews,
+    required this.isPremiumRequired,
+    required this.onRefresh,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return RefreshIndicator(
+      onRefresh: () async => onRefresh(),
+      color: AppColors.gold,
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
+        children: [
+          // Stats card
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: AppColors.goldSubtle,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: AppColors.goldMild),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.visibility_rounded, color: AppColors.gold, size: 32),
+                const SizedBox(width: 16),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('$totalViews', style: AppTextStyles.headlineLarge),
+                    Text('Profile views', style: AppTextStyles.bodySmall),
+                  ],
+                ),
+              ],
+            ),
+          ).animate().fadeIn(duration: 300.ms),
+          const SizedBox(height: 20),
+          if (isPremiumRequired) ...[
+            _PremiumGate(
+              message: 'Upgrade to Silver or above to see who viewed your profile.',
+              onTap: () => context.push('/subscription'),
+            ),
+          ] else if (viewers.isEmpty) ...[
+            _emptyState(
+              icon: Icons.visibility_off_rounded,
+              title: 'No views yet',
+              subtitle: 'When someone opens your profile, they will appear here.',
+            ),
+          ] else ...[
+            Text('Who viewed you', style: AppTextStyles.headlineSmall).animate().fadeIn(duration: 200.ms),
+            const SizedBox(height: 12),
+            ...viewers.asMap().entries.map((entry) {
+              final i = entry.key;
+              final v = entry.value;
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: _ProfileMiniCard(profile: v, onTap: () {
+                  final uid = v['user_id']?.toString();
+                  if (uid != null) context.push('/profile/$uid');
+                })
+                    .animate()
+                    .fadeIn(duration: 300.ms, delay: (i * 50).ms),
+              );
+            }),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+// ───────────────────────────────────────────────────────────────
+// SHORTLISTS TAB
+// ───────────────────────────────────────────────────────────────
+class _ShortlistsTab extends StatelessWidget {
+  final List<Map<String, dynamic>> profiles;
+  final VoidCallback onRefresh;
+
+  const _ShortlistsTab({required this.profiles, required this.onRefresh});
+
+  @override
+  Widget build(BuildContext context) {
+    if (profiles.isEmpty) {
+      return _emptyState(
+        icon: Icons.star_border_rounded,
+        title: 'No shortlisted profiles',
+        subtitle: "Tap ⭐ on someone's profile to save them here for later.",
+      );
+    }
+
+    return RefreshIndicator(
+      onRefresh: () async => onRefresh(),
+      color: AppColors.gold,
+      child: ListView.separated(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
+        itemCount: profiles.length,
+        separatorBuilder: (_, __) => const SizedBox(height: 10),
+        itemBuilder: (context, i) {
+          final p = profiles[i];
+          return _ProfileMiniCard(
+            profile: p,
+            trailing: IconButton(
+              icon: const Icon(Icons.star_rounded, color: AppColors.gold),
+              onPressed: () {
+                AppHaptics.medium();
+                context.read<ActivityBloc>().add(ToggleShortlistEvent(p['user_id'].toString()));
+              },
+            ),
+            onTap: () {
+              final uid = p['user_id']?.toString();
+              if (uid != null) context.push('/profile/$uid');
+            },
+          ).animate().fadeIn(duration: 300.ms, delay: (i * 40).ms);
+        },
+      ),
+    );
+  }
+}
+
+// ───────────────────────────────────────────────────────────────
+// SHARED WIDGETS
+// ───────────────────────────────────────────────────────────────
+class _ProfileMiniCard extends StatelessWidget {
+  final Map<String, dynamic> profile;
+  final VoidCallback onTap;
+  final Widget? trailing;
+
+  const _ProfileMiniCard({
+    required this.profile,
+    required this.onTap,
+    this.trailing,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final name = profile['first_name']?.toString() ?? 'Member';
+    final age = profile['age'];
+    final city = profile['location_city']?.toString() ?? '';
+    final denom = profile['denomination']?.toString() ?? '';
+    final photoUrl = profile['photo_url']?.toString();
+    final isTrusted = profile['trust_badge'] == true;
+
+    return Material(
+      color: AppColors.surfaceElevated,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: () {
+          AppHaptics.light();
+          onTap();
+        },
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            children: [
+              // Avatar
+              Container(
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: AppColors.surfaceHighest,
+                  border: Border.all(color: AppColors.goldMild),
+                  image: photoUrl != null
+                      ? DecorationImage(
+                          image: CachedNetworkImageProvider(photoUrl),
+                          fit: BoxFit.cover,
+                        )
+                      : null,
+                ),
+                child: photoUrl == null
+                    ? const Icon(Icons.person_rounded, color: AppColors.textTertiary)
+                    : null,
+              ),
+              const SizedBox(width: 12),
+              // Info
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Text(
+                          age != null ? '$name, $age' : name,
+                          style: AppTextStyles.labelLarge,
+                        ),
+                        if (isTrusted) ...[
+                          const SizedBox(width: 4),
+                          const Icon(Icons.verified_rounded, color: AppColors.blessing, size: 14),
+                        ],
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      [if (denom.isNotEmpty) denom, if (city.isNotEmpty) city].join(' • '),
+                      style: AppTextStyles.bodySmall,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+              trailing ??
+                  const Icon(Icons.chevron_right_rounded, color: AppColors.textTertiary),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PremiumGate extends StatelessWidget {
+  final String message;
+  final VoidCallback onTap;
+  const _PremiumGate({required this.message, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceElevated,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppColors.goldMild),
+      ),
+      child: Column(
+        children: [
+          const Icon(Icons.lock_rounded, color: AppColors.gold, size: 40),
+          const SizedBox(height: 12),
+          Text('Premium Feature', style: AppTextStyles.headlineSmall),
+          const SizedBox(height: 8),
+          Text(message,
+              style: AppTextStyles.bodyMedium,
+              textAlign: TextAlign.center),
+          const SizedBox(height: 16),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.gold,
+              foregroundColor: AppColors.textOnGold,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+            ),
+            onPressed: onTap,
+            child: Text('Upgrade Plan', style: AppTextStyles.labelLarge.copyWith(color: AppColors.textOnGold)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+Widget _emptyState({required IconData icon, required String title, required String subtitle}) {
+  return Center(
+    child: Padding(
+      padding: const EdgeInsets.all(32),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 64, color: AppColors.textTertiary),
+          const SizedBox(height: 16),
+          Text(title, style: AppTextStyles.headlineSmall, textAlign: TextAlign.center),
+          const SizedBox(height: 8),
+          Text(subtitle,
+              style: AppTextStyles.bodyMedium,
+              textAlign: TextAlign.center),
+        ],
+      ),
+    ),
+  );
+}

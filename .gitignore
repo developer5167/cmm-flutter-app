@@ -43,4 +43,5 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
-src/service_account.json
+/lib/firebase_options.dart
+aws.csv

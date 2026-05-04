@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' show ImageFilter;
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:go_router/go_router.dart';
@@ -377,8 +378,10 @@ class _ProfileCardState extends State<ProfileCard>
       physics: const NeverScrollableScrollPhysics(),
       itemCount: photos.length,
       itemBuilder: (context, index) {
-        return CachedNetworkImage(
-          imageUrl: photos[index],
+        final url = photos[index];
+        final locked = widget.profile['is_images_locked'] == true;
+        final img = CachedNetworkImage(
+          imageUrl: url,
           fit: BoxFit.cover,
           width: double.infinity,
           height: double.infinity,
@@ -396,6 +399,36 @@ class _ProfileCardState extends State<ProfileCard>
             child: const Icon(Icons.broken_image_rounded, color: AppColors.textTertiary),
           ),
           fadeInDuration: const Duration(milliseconds: 300),
+        );
+        if (!locked) return img;
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            ImageFiltered(
+              imageFilter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+              child: img,
+            ),
+            Center(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.black54,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.lock_rounded, color: Colors.white.withOpacity(0.9), size: 18),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Photo locked',
+                      style: AppTextStyles.labelSmall.copyWith(color: Colors.white),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
         );
       },
     );

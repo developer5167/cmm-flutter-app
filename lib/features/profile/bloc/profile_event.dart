@@ -9,10 +9,13 @@ abstract class ProfileEvent extends Equatable {
 
 class FetchProfileEvent extends ProfileEvent {
   final String? userId;
-  const FetchProfileEvent({this.userId});
+
+  /// When true, skips [ProfileLoading] and keeps UI stable (e.g. after settings save).
+  final bool silentRefresh;
+  const FetchProfileEvent({this.userId, this.silentRefresh = false});
 
   @override
-  List<Object?> get props => [userId];
+  List<Object?> get props => [userId, silentRefresh];
 }
 
 class SendInterestEvent extends ProfileEvent {

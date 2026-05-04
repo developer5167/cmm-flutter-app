@@ -8,6 +8,7 @@ import '../../features/discover/screens/discover_screen.dart';
 import '../../features/interests/screens/interests_screen.dart';
 import '../../features/chat/screens/conversations_screen.dart';
 import '../../features/chat/screens/chat_screen.dart';
+import '../../features/activity/screens/activity_screen.dart';
 import '../../features/profile/screens/my_profile_screen.dart';
 import '../../features/profile/screens/public_profile_screen.dart';
 import '../../features/settings/screens/settings_screen.dart';
@@ -104,6 +105,10 @@ class AppRouter {
             GoRoute(
               path: '/chat',
               builder: (_, __) => const ConversationsScreen(),
+            ),
+            GoRoute(
+              path: '/activity',
+              builder: (_, __) => const ActivityScreen(),
             ),
             GoRoute(
               path: '/profile',

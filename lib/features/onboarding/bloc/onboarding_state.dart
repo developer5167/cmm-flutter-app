@@ -27,14 +27,6 @@ class StepSavedSuccess extends OnboardingState {
   List<Object?> get props => [step];
 }
 
-class PhotoUploadedSuccess extends OnboardingState {
-  final int index;
-  const PhotoUploadedSuccess(this.index);
-
-  @override
-  List<Object?> get props => [index];
-}
-
 class OnboardingError extends OnboardingState {
   final String message;
   const OnboardingError(this.message);

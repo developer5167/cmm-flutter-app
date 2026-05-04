@@ -55,9 +55,13 @@ class ProfileRepository {
     }
   }
 
-  Future<void> updateSettings(Map<String, dynamic> settings) async {
+  Future<Map<String, dynamic>> updateSettings(Map<String, dynamic> settings) async {
     try {
-      await _dio.post(ApiEndpoints.updateSettings, data: settings);
+      final response =
+          await _dio.put(ApiEndpoints.updateSettings, data: settings);
+      final data = response.data['data'];
+      if (data is Map<String, dynamic>) return data;
+      return {};
     } on DioException catch (e) {
       throw _handleError(e);
     }

@@ -4,6 +4,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:app_links/app_links.dart';
 import 'core/storage/app_storage.dart';
 import 'core/state/active_chat_state.dart';
 import 'core/router/app_router.dart';
@@ -18,6 +19,7 @@ import 'features/interests/bloc/interests_bloc.dart';
 import 'features/profile/bloc/profile_bloc.dart';
 import 'features/chat/bloc/chat_bloc.dart';
 import 'features/subscriptions/bloc/subscription_bloc.dart';
+import 'features/activity/bloc/activity_bloc.dart';
 import 'firebase_options.dart';
 
 // Background message handler — must be top-level, called when app is killed/background.
@@ -26,6 +28,28 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   // No UI work here — system tray notification is shown automatically by FCM
   // when the backend sends both notification + data payloads.
+}
+
+// Handles gracematch.app/p/:userId links after the app is already running.
+void _initAppLinks() {
+  final appLinks = AppLinks();
+  appLinks.uriLinkStream.listen((uri) {
+    _handleAppLink(uri);
+  });
+
+  // Also handle the initial link if the app was cold-started via a link
+  appLinks.getInitialLink().then((uri) {
+    if (uri != null) _handleAppLink(uri);
+  });
+}
+
+void _handleAppLink(Uri uri) {
+  // Expected: https://gracematch.app/p/<userId>
+  final segments = uri.pathSegments;
+  if (segments.length >= 2 && segments[0] == 'p') {
+    final userId = segments[1];
+    AppRouter.router.push('/profile/$userId');
+  }
 }
 
 Future<void> main() async {
@@ -134,6 +158,11 @@ await Firebase.initializeApp(
   // Init router (needs async for token check)
   await AppRouter.init();
 
+  // App Links — handle incoming deep links while the app is running.
+  // Cold-start links are handled by the router's redirect logic when
+  // GoRouter picks up the initial URI automatically (Flutter 3.x+).
+  _initAppLinks();
+
   runApp(const GraceMatchApp());
 }
 
@@ -151,6 +180,7 @@ class GraceMatchApp extends StatelessWidget {
         BlocProvider(create: (_) => di.sl<ProfileBloc>()),
         BlocProvider(create: (_) => di.sl<ChatBloc>()),
         BlocProvider(create: (_) => di.sl<SubscriptionBloc>()),
+        BlocProvider(create: (_) => di.sl<ActivityBloc>()),
       ],
       child: MaterialApp.router(
         title: 'GraceMatch',

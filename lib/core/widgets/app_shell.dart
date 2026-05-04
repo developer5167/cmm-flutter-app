@@ -20,7 +20,8 @@ class _AppShellState extends State<AppShell> {
       if (location.startsWith('/discover')) return 0;
       if (location.startsWith('/interests')) return 1;
       if (location.startsWith('/chat')) return 2;
-      if (location.startsWith('/profile')) return 3;
+      if (location.startsWith('/activity')) return 3;
+      if (location.startsWith('/profile')) return 4;
     } catch (_) {}
     return 0;
   }
@@ -29,6 +30,7 @@ class _AppShellState extends State<AppShell> {
     _NavTab(path: '/discover', icon: Icons.explore_rounded, label: 'Discover'),
     _NavTab(path: '/interests', icon: Icons.favorite_rounded, label: 'Interests'),
     _NavTab(path: '/chat', icon: Icons.chat_bubble_rounded, label: 'Chat'),
+    _NavTab(path: '/activity', icon: Icons.notifications_rounded, label: 'Activity'),
     _NavTab(path: '/profile', icon: Icons.person_rounded, label: 'Profile'),
   ];
 

@@ -54,6 +54,18 @@ class ApiEndpoints {
   static const String plans = '/subscriptions/plans';
   static const String razorpayOrder = '/subscriptions/razorpay/order';
 
+  // Notifications
+  static const String notifications = '/notifications';
+  static const String notificationsUnread = '/notifications/unread';
+  static const String notificationsReadAll = '/notifications/read-all';
+  static String notificationRead(String id) => '/notifications/$id/read';
+
+  // Activity
+  static const String activitySummary = '/activity/summary';
+  static const String activityViews = '/activity/views';
+  static const String activityShortlists = '/activity/shortlists';
+  static const String activityShortlistsCheck = '/activity/shortlists/check';
+
   // Premium
   static const String spotlight = '/premium/spotlight';
   static const String contactRequest = '/premium/contact-request';

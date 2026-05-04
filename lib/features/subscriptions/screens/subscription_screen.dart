@@ -98,13 +98,47 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
     );
   }
 
+  /// Converts the backend features JSONB object into human-readable bullet strings.
+  /// Values of -1 mean "Unlimited"; 0 / false means skip.
+  List<String> _featuresToStrings(dynamic raw) {
+    if (raw == null) return [];
+
+    // Backend sends a Map: {"unlimited_swipes": true, "contact_reveals_per_month": 5, ...}
+    final Map<String, dynamic> map = raw is Map
+        ? Map<String, dynamic>.from(raw)
+        : {};
+
+    String count(dynamic v, String singular, String plural) {
+      if (v == null || v == false || v == 0) return '';
+      if (v == -1 || v == true) return 'Unlimited $plural';
+      return '$v ${v == 1 ? singular : plural}';
+    }
+
+    final lines = <String>[];
+
+    void add(dynamic v, String Function(dynamic) fn) {
+      final s = fn(v);
+      if (s.isNotEmpty) lines.add(s);
+    }
+
+    add(map['unlimited_swipes'],           (v) => v == true ? 'Unlimited daily swipes' : '');
+    add(map['see_who_viewed'],             (v) => v == true ? 'See who viewed your profile' : '');
+    add(map['contact_reveals_per_month'],  (v) => count(v, 'Contact reveal', 'Contact reveals') + (v != -1 && v != null && v != 0 ? ' / month' : ''));
+    add(map['spotlight_boosts'],           (v) => count(v, 'Spotlight boost', 'Spotlight boosts'));
+    add(map['super_interests'],            (v) => count(v, 'Super interest', 'Super interests'));
+    add(map['priority_discover'],          (v) => v == true ? 'Priority in discovery' : '');
+    add(map['dedicated_support'],          (v) => v == true ? 'Dedicated support' : '');
+
+    return lines.where((s) => s.isNotEmpty).toList();
+  }
+
   Widget _buildPlanCard({
     required Map<String, dynamic> plan,
     required BuildContext context,
     required bool isProcessing,
   }) {
     final bool isPopular = plan['name']?.toString().toLowerCase() == 'gold';
-    final List<String> features = (plan['features'] as List?)?.map((e) => e.toString()).toList() ?? [];
+    final List<String> features = _featuresToStrings(plan['features']);
 
     return Container(
       decoration: BoxDecoration(

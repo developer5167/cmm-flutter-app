@@ -14,6 +14,8 @@ import '../../features/chat/bloc/chat_bloc.dart';
 import '../network/socket_service.dart';
 import '../../features/subscriptions/data/subscription_repository.dart';
 import '../../features/subscriptions/bloc/subscription_bloc.dart';
+import '../../features/activity/data/activity_repository.dart';
+import '../../features/activity/bloc/activity_bloc.dart';
 
 final sl = GetIt.instance;
 
@@ -29,6 +31,7 @@ void init() {
   sl.registerLazySingleton<ProfileRepository>(() => ProfileRepository());
   sl.registerLazySingleton<ChatRepository>(() => ChatRepository());
   sl.registerLazySingleton<SubscriptionRepository>(() => SubscriptionRepository());
+  sl.registerLazySingleton<ActivityRepository>(() => ActivityRepository());
 
   // BLoCs
   sl.registerFactory(() => AuthBloc(sl()));
@@ -38,4 +41,5 @@ void init() {
   sl.registerFactory(() => ProfileBloc(sl()));
   sl.registerFactory(() => ChatBloc(sl(), sl()));
   sl.registerFactory(() => SubscriptionBloc(sl()));
+  sl.registerFactory(() => ActivityBloc(sl()));
 }

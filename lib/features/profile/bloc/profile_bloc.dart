@@ -63,23 +63,35 @@ class ProfileBloc extends Bloc<ProfileEvent, ProfileState> {
   }
 
   Future<void> _onFetchProfile(FetchProfileEvent event, Emitter<ProfileState> emit) async {
-    emit(ProfileLoading());
+    final silentOwnProfile =
+        event.silentRefresh && event.userId == null && state is ProfileLoaded;
+    if (!silentOwnProfile) emit(ProfileLoading());
+    ProfileLoaded? previous;
+    if (state is ProfileLoaded) previous = state as ProfileLoaded;
     try {
-      final profile = event.userId != null 
+      final profile = event.userId != null
           ? await _repository.fetchProfile(event.userId!)
           : await _repository.fetchMyProfile();
-      emit(ProfileLoaded(profile, userId: event.userId));
+      emit(ProfileLoaded(profile, userId: event.userId ?? previous?.userId));
     } catch (e) {
+      if (silentOwnProfile && previous != null) {
+        emit(previous);
+        return;
+      }
       emit(ProfileError(e.toString()));
     }
   }
 
   Future<void> _onUpdateSettings(UpdateSettingsEvent event, Emitter<ProfileState> emit) async {
+    final previous = state is ProfileLoaded ? state as ProfileLoaded : null;
     try {
       await _repository.updateSettings(event.settings);
-      add(FetchProfileEvent());
+      add(const FetchProfileEvent(silentRefresh: true));
     } catch (e) {
-      emit(ProfileError(e.toString()));
+      if (previous != null) emit(previous);
+      else {
+        emit(ProfileError(e.toString()));
+      }
     }
   }
 }
