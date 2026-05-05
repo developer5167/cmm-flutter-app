@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/storage/app_storage.dart';
@@ -148,7 +149,9 @@ class _ChatScreenState extends State<ChatScreen> {
   String _resolveStatus(Map<String, dynamic> msg) {
     final explicit = msg['_status']?.toString();
     if (explicit != null && explicit.isNotEmpty) return explicit;
-    return msg['is_read'] == true ? 'read' : 'sent';
+    if (msg['is_read'] == true) return 'read';
+    if (msg['delivered_at'] != null) return 'delivered';
+    return 'sent';
   }
 
   Widget _buildStatusIcon(String status) {
@@ -236,7 +239,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   image: widget.otherUserPhoto != null &&
                           widget.otherUserPhoto!.isNotEmpty
                       ? DecorationImage(
-                          image: NetworkImage(widget.otherUserPhoto!),
+                          image: CachedNetworkImageProvider(widget.otherUserPhoto!),
                           fit: BoxFit.cover,
                         )
                       : null,

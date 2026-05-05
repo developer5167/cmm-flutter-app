@@ -81,19 +81,31 @@ class SubscriptionBloc extends Bloc<SubscriptionEvent, SubscriptionState> {
     emit(PaymentPending());
     try {
       final orderData = await _repository.createOrder(event.plan['id']);
-      
-      var options = {
-        'key': orderData['key'],
-        'amount': orderData['amount'] * 100,
+      final rupees = orderData['amount'];
+      final amountPaise = ((rupees is num)
+              ? rupees.toDouble()
+              : double.parse(rupees.toString())) *
+          100;
+      final options = <String, dynamic>{
+        'key': orderData['key']?.toString() ?? '',
+        'amount': amountPaise.round(),
+        'currency': 'INR',
         'name': 'GraceMatch Premium',
-        'order_id': orderData['order_id'],
-        'description': event.plan['name'],
-        'timeout': 300, // in seconds
+        'order_id': orderData['order_id']?.toString() ?? '',
+        'description': event.plan['name']?.toString() ?? 'Premium',
+        'timeout': 300,
         'prefill': {
-          'contact': '9100000000', // Should come from User Profile
-          'email': 'user@example.com'
-        }
+          'contact': '9100000000',
+          'email': 'user@example.com',
+        },
       };
+
+      if (options['key'] == null || (options['key'] as String).isEmpty) {
+        throw Exception('Razorpay key missing. Set RAZORPAY_KEY_ID on the server.');
+      }
+      if ((options['order_id'] as String).isEmpty) {
+        throw Exception('Could not create payment order.');
+      }
 
       _razorpay.open(options);
     } catch (e) {
@@ -101,8 +113,30 @@ class SubscriptionBloc extends Bloc<SubscriptionEvent, SubscriptionState> {
     }
   }
 
-  void _onPaymentSuccess(PaymentSuccessEvent event, Emitter<SubscriptionState> emit) {
-    emit(const PaymentProcessed(success: true, message: 'Payment Successful! Subscription activating...'));
+  Future<void> _onPaymentSuccess(
+      PaymentSuccessEvent event, Emitter<SubscriptionState> emit) async {
+    // Verify payment signature on the server to activate the subscription.
+    try {
+      final verified = await _repository.verifyPayment(
+        orderId: event.response.orderId ?? '',
+        paymentId: event.response.paymentId ?? '',
+        signature: event.response.signature ?? '',
+      );
+      if (verified) {
+        emit(const PaymentProcessed(
+            success: true,
+            message: '🎉 Premium Activated! Enjoy unlimited matches.'));
+      } else {
+        emit(const PaymentProcessed(
+            success: false,
+            message: 'Payment verification failed. Contact support if amount was deducted.'));
+      }
+    } catch (_) {
+      // Even if verify call fails, the webhook will activate it.
+      emit(const PaymentProcessed(
+          success: true,
+          message: 'Payment received! Your subscription will activate shortly.'));
+    }
   }
 
   void _onPaymentError(PaymentErrorEvent event, Emitter<SubscriptionState> emit) {

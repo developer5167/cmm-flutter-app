@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../bloc/interests_bloc.dart';
@@ -151,7 +152,7 @@ class _InterestsScreenState extends State<InterestsScreen> with SingleTickerProv
                     border: Border.all(color: AppColors.goldMild, width: 2),
                     image: profile['photo_url'] != null 
                       ? DecorationImage(
-                          image: NetworkImage(profile['photo_url']),
+                          image: CachedNetworkImageProvider(profile['photo_url']),
                           fit: BoxFit.cover,
                         )
                       : null,

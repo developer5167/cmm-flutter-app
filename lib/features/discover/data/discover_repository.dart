@@ -1,14 +1,36 @@
 import 'package:dio/dio.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/network/dio_client.dart';
+import '../bloc/discover_filters.dart';
 
 class DiscoverRepository {
   final Dio _dio = DioClient.instance;
 
-  Future<List<Map<String, dynamic>>> fetchFeed({int page = 1, int limit = 10}) async {
+  Future<List<Map<String, dynamic>>> fetchFeed({
+    int page = 1,
+    int limit = 10,
+    DiscoverFilters? filters,
+  }) async {
     try {
-      final response = await _dio.get('${ApiEndpoints.discoverFeed}?page=$page&limit=$limit');
+      final params = <String, dynamic>{
+        'page': page,
+        'limit': limit,
+        ...?filters?.toQueryParams(),
+      };
+      final response = await _dio.get(
+        ApiEndpoints.discoverFeed,
+        queryParameters: params,
+      );
       return List<Map<String, dynamic>>.from(response.data['data']['profiles']);
+    } on DioException catch (e) {
+      throw _handleError(e);
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> fetchDailyMatches() async {
+    try {
+      final response = await _dio.get(ApiEndpoints.dailyMatches);
+      return List<Map<String, dynamic>>.from(response.data['data']['matches']);
     } on DioException catch (e) {
       throw _handleError(e);
     }
@@ -19,7 +41,7 @@ class DiscoverRepository {
       await _dio.post(ApiEndpoints.sendInterest, data: {
         'receiver_id': targetUserId,
         'is_super_interest': isSuperInterest,
-        'type': isSuperInterest ? 'super_interest' : 'interest'
+        'type': isSuperInterest ? 'super_interest' : 'interest',
       });
     } on DioException catch (e) {
       throw _handleError(e);
@@ -30,7 +52,7 @@ class DiscoverRepository {
     try {
       await _dio.post(ApiEndpoints.sendInterest, data: {
         'receiver_id': targetUserId,
-        'type': 'pass'
+        'type': 'pass',
       });
     } on DioException catch (e) {
       throw _handleError(e);
@@ -41,6 +63,6 @@ class DiscoverRepository {
     if (e.response != null) {
       return e.response?.data['message'] ?? 'An error occurred';
     }
-    return 'Detailed network error. Please try again.';
+    return 'Network error. Please try again.';
   }
 }

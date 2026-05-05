@@ -138,6 +138,9 @@ await Firebase.initializeApp(
   // Connect Sockets
   di.sl<SocketService>().connect();
 
+  // Screenshot & screen-recording protection (Android only via FLAG_SECURE).
+  // Implemented natively in MainActivity.kt — no package needed.
+
   // Lock orientation to portrait
   await SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,

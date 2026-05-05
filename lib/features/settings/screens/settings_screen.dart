@@ -6,6 +6,7 @@ import '../../../core/di/injection.dart' as di;
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/utils/app_haptics.dart';
+import '../../auth/data/auth_repository.dart';
 import '../../profile/bloc/profile_bloc.dart';
 import '../../profile/bloc/profile_event.dart';
 import '../../profile/bloc/profile_state.dart';
@@ -43,6 +44,49 @@ class _SettingsScreenState extends State<SettingsScreen> {
           duration: Duration(seconds: 2),
         ),
       );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          content: Text(e.toString()),
+          backgroundColor: AppColors.error,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _logout() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: AppColors.surfaceElevated,
+        title: Text('Log out?', style: AppTextStyles.headlineSmall),
+        content: Text(
+          'You will be signed out from this device.',
+          style: AppTextStyles.bodyMedium.copyWith(color: AppColors.textSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Log out', style: TextStyle(color: AppColors.error)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true || !mounted) return;
+    setState(() => _busy = true);
+    try {
+      await di.sl<AuthRepository>().logout();
+      if (!mounted) return;
+      context.go('/auth/phone');
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.maybeOf(context)?.showSnackBar(
@@ -183,6 +227,34 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ),
                       );
                     },
+                  ),
+                  const SizedBox(height: 20),
+                  Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(18),
+                      onTap: _busy ? null : _logout,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                        decoration: BoxDecoration(
+                          color: AppColors.surfaceElevated,
+                          borderRadius: BorderRadius.circular(18),
+                          border: Border.all(color: AppColors.error.withAlpha(120)),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.logout_rounded, color: AppColors.error),
+                            const SizedBox(width: 12),
+                            Text(
+                              'Log out',
+                              style: AppTextStyles.labelLarge.copyWith(color: AppColors.error),
+                            ),
+                            const Spacer(),
+                            const Icon(Icons.chevron_right_rounded, color: AppColors.textTertiary),
+                          ],
+                        ),
+                      ),
+                    ),
                   ),
                   const SizedBox(height: 24),
                   Text(

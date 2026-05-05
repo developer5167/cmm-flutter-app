@@ -5,6 +5,8 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/utils/app_haptics.dart';
+import '../../../core/network/dio_client.dart';
+import '../../../core/constants/app_constants.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:smooth_page_indicator/smooth_page_indicator.dart';
 import '../../../core/widgets/full_screen_gallery.dart';
@@ -14,6 +16,7 @@ import '../bloc/profile_event.dart';
 import '../../../core/storage/app_storage.dart';
 import '../../activity/bloc/activity_bloc.dart';
 import '../../activity/bloc/activity_event.dart';
+import '../../discover/screens/match_explanation_screen.dart';
 
 class PublicProfileScreen extends StatefulWidget {
   final String? userId; // If null, shows own profile preview
@@ -33,6 +36,11 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
   int _currentPhotoIndex = 0;
   String? _myUserId;
 
+  // Contact reveal state
+  Map<String, dynamic>? _contactStatus; // outgoing, incoming, phone
+  bool _contactLoading = false;
+  bool _contactRequesting = false;
+
   @override
   void initState() {
     super.initState();
@@ -41,7 +49,6 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
     if (widget.userId != null) {
       context.read<ProfileBloc>().add(FetchProfileEvent(userId: widget.userId));
     } else {
-      // Ensure we have the latest data for preview
       context.read<ProfileBloc>().add(FetchProfileEvent());
     }
   }
@@ -49,6 +56,59 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
   Future<void> _loadMyUserId() async {
     final id = await AppStorage.getUserId();
     if (mounted) setState(() => _myUserId = id);
+  }
+
+  // contact_status is now embedded in the profile response for accepted matches.
+  // _loadContactStatus is only called as a fallback (e.g. after a new contact request).
+  Future<void> _loadContactStatus() async {
+    if (widget.userId == null || _contactLoading) return;
+    if (mounted) setState(() => _contactLoading = true);
+    try {
+      final dio = DioClient.instance;
+      final resp = await dio.get(ApiEndpoints.contactStatus(widget.userId!));
+      if (mounted) {
+        setState(() => _contactStatus = Map<String, dynamic>.from(resp.data['data'] ?? {}));
+      }
+    } catch (_) {
+      // Non-fatal — contact reveal section just won't show
+    } finally {
+      if (mounted) setState(() => _contactLoading = false);
+    }
+  }
+
+  /// Extract embedded contact_status from the loaded profile data.
+  /// This avoids a second HTTP round-trip for accepted matches.
+  void _maybeApplyEmbeddedContactStatus(Map<String, dynamic> profileData) {
+    if (_contactStatus != null) return; // already set
+    final embedded = profileData['contact_status'];
+    if (embedded is Map) {
+      setState(() => _contactStatus = Map<String, dynamic>.from(embedded));
+    }
+  }
+
+  Future<void> _requestContact() async {
+    if (widget.userId == null || _contactRequesting) return;
+    setState(() => _contactRequesting = true);
+    try {
+      final dio = DioClient.instance;
+      await dio.post(ApiEndpoints.contactRequest, data: {'target_user_id': widget.userId});
+      // Refresh contact status after posting the request
+      _contactStatus = null;
+      await _loadContactStatus();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Contact request sent ✓'), backgroundColor: Colors.green),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.toString()), backgroundColor: AppColors.error),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _contactRequesting = false);
+    }
   }
 
   @override
@@ -655,51 +715,114 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
     }
 
     if (status == 'accepted') {
+      // Prefer embedded contact_status (avoids a second HTTP call).
+      // Fall back to the dedicated endpoint only when not available.
+      if (_contactStatus == null && !_contactLoading) {
+        if (data.containsKey('contact_status') && data['contact_status'] != null) {
+          Future.microtask(() => _maybeApplyEmbeddedContactStatus(data));
+        } else {
+          Future.microtask(_loadContactStatus);
+        }
+      }
+
+      final outgoing = _contactStatus?['outgoing'] as Map?;
+      final phone    = _contactStatus?['phone'] as String?;
+      final outStatus = outgoing?['status'] as String?; // pending | approved | rejected | null
+
       return Container(
-        padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
-        decoration: BoxDecoration(color: AppColors.background.withOpacity(0.95)),
-        child: ElevatedButton(
-          onPressed: () {
-            AppHaptics.heavy();
-            if (conversationId != null) {
-              // Navigate directly to the conversation
-              final otherName = data['profile'] is Map
-                  ? (data['profile'] as Map)['first_name']?.toString()
-                  : null;
-              context.push(
-                '/chat/$conversationId',
-                extra: {
-                  'name': otherName ?? 'Match',
-                  'userId': widget.userId,
-                },
-              );
-            } else {
-              // Conversation ID missing — go to conversations list
-              context.go('/chat');
-            }
-          },
-          style: ElevatedButton.styleFrom(
-            backgroundColor: AppColors.gold,
-            foregroundColor: AppColors.textOnGold,
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          ),
-          child: const Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.chat_bubble_rounded, size: 20),
-              SizedBox(width: 10),
-              Text(
-                'SEND MESSAGE',
-                style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1),
+        padding: const EdgeInsets.fromLTRB(24, 12, 24, 32),
+        decoration: BoxDecoration(color: AppColors.background.withOpacity(0.97)),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Send Message button
+            ElevatedButton(
+              onPressed: () {
+                AppHaptics.heavy();
+                if (conversationId != null) {
+                  final otherName = data['profile'] is Map
+                      ? (data['profile'] as Map)['first_name']?.toString()
+                      : null;
+                  context.push('/chat/$conversationId', extra: {
+                    'name': otherName ?? 'Match',
+                    'userId': widget.userId,
+                  });
+                } else {
+                  context.go('/chat');
+                }
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.gold,
+                foregroundColor: AppColors.textOnGold,
+                minimumSize: const Size(double.infinity, 52),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
               ),
-            ],
-          ),
+              child: const Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.chat_bubble_rounded, size: 20),
+                  SizedBox(width: 10),
+                  Text('SEND MESSAGE', style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1)),
+                ],
+              ),
+            ),
+            const SizedBox(height: 10),
+            // Contact reveal row
+            _ContactRevealTile(
+              outStatus: outStatus,
+              phone: phone,
+              loading: _contactLoading || _contactRequesting,
+              onRequest: _requestContact,
+            ),
+            const SizedBox(height: 10),
+            // AI Match Explanation
+            _buildWhyWeMatchButton(data),
+          ],
         ),
       );
     }
 
     return null;
+  }
+
+  Widget _buildWhyWeMatchButton(Map<String, dynamic> data) {
+    final profile = data['profile'] is Map ? data['profile'] as Map<String, dynamic> : data;
+    final name = profile['first_name']?.toString() ?? 'your match';
+    final photos = data['photos'] as List?;
+    final primaryPhoto = photos != null && photos.isNotEmpty
+        ? photos.firstWhere((p) => p['is_primary'] == true, orElse: () => photos.first)
+        : null;
+    final photoUrl = primaryPhoto is Map
+        ? (primaryPhoto['url'] ?? primaryPhoto['photo_url'])?.toString()
+        : null;
+    final compat = data['compatibility'] as int?;
+
+    return OutlinedButton(
+      onPressed: () {
+        Navigator.of(context).push(MaterialPageRoute(
+          builder: (_) => MatchExplanationScreen(
+            targetUserId: widget.userId!,
+            targetName: name,
+            targetPhoto: photoUrl,
+            compatibility: compat,
+          ),
+        ));
+      },
+      style: OutlinedButton.styleFrom(
+        foregroundColor: AppColors.gold,
+        side: const BorderSide(color: AppColors.goldMild),
+        minimumSize: const Size(double.infinity, 44),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: const [
+          Icon(Icons.auto_awesome, size: 16, color: AppColors.gold),
+          SizedBox(width: 8),
+          Text('Why We Match', style: TextStyle(fontWeight: FontWeight.w600)),
+        ],
+      ),
+    );
   }
 
   Widget _actionButton({required IconData icon, required Color color, required VoidCallback onTap}) {
@@ -746,6 +869,85 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
           const SizedBox(height: 4),
           Text(value, style: AppTextStyles.labelLarge, maxLines: 1, overflow: TextOverflow.ellipsis),
         ],
+      ),
+    );
+  }
+}
+
+// ─── Contact Reveal Tile ──────────────────────────────────────
+class _ContactRevealTile extends StatelessWidget {
+  final String? outStatus; // null | pending | approved | rejected
+  final String? phone;
+  final bool loading;
+  final VoidCallback onRequest;
+
+  const _ContactRevealTile({
+    required this.outStatus,
+    required this.phone,
+    required this.loading,
+    required this.onRequest,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    // Approved — show phone number
+    if (outStatus == 'approved' && phone != null) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: const Color(0xFF1B2E1B),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: Colors.green.withAlpha(80)),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.phone_rounded, color: Colors.green, size: 20),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Contact Number', style: AppTextStyles.overline.copyWith(color: Colors.green.shade300)),
+                  Text(phone!, style: AppTextStyles.labelLarge.copyWith(color: Colors.white)),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Pending — show waiting state
+    if (outStatus == 'pending') {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: AppColors.surfaceElevated,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: AppColors.goldMild),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.hourglass_top_rounded, color: AppColors.gold, size: 18),
+            const SizedBox(width: 10),
+            Text('Contact request pending…', style: AppTextStyles.labelSmall.copyWith(color: AppColors.gold)),
+          ],
+        ),
+      );
+    }
+
+    // Rejected or null — show request button
+    return OutlinedButton.icon(
+      onPressed: loading ? null : onRequest,
+      icon: loading
+          ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.gold))
+          : const Icon(Icons.phone_in_talk_rounded, size: 18),
+      label: Text(outStatus == 'rejected' ? 'Request Again' : 'Request Contact'),
+      style: OutlinedButton.styleFrom(
+        foregroundColor: AppColors.gold,
+        side: const BorderSide(color: AppColors.goldMild),
+        minimumSize: const Size(double.infinity, 48),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       ),
     );
   }

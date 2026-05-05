@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 
@@ -218,7 +219,7 @@ class _Step8PhotosState extends OnboardingStepState<Step8Photos>
                   ClipRRect(
                     borderRadius: BorderRadius.circular(15),
                     child: isNetwork
-                        ? Image.network(path, fit: BoxFit.cover)
+                        ? CachedNetworkImage(imageUrl: path, fit: BoxFit.cover)
                         : Image.file(File(path), fit: BoxFit.cover),
                   ),
                   if (_statusBadge(index) != null) _statusBadge(index)!,

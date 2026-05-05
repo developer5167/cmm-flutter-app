@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../bloc/chat_bloc.dart';
@@ -155,7 +156,7 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
                         color: AppColors.surfaceHighest,
                         border: isUnread ? Border.all(color: AppColors.gold, width: 2) : null,
                         image: photo != null && photo.isNotEmpty
-                          ? DecorationImage(image: NetworkImage(photo), fit: BoxFit.cover)
+                          ? DecorationImage(image: CachedNetworkImageProvider(photo), fit: BoxFit.cover)
                           : null,
                       ),
                       child: photo == null || photo.isEmpty

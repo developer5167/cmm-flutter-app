@@ -1,4 +1,5 @@
 import 'package:equatable/equatable.dart';
+import 'discover_filters.dart';
 
 abstract class DiscoverEvent extends Equatable {
   const DiscoverEvent();
@@ -9,10 +10,15 @@ abstract class DiscoverEvent extends Equatable {
 
 class FetchFeedEvent extends DiscoverEvent {
   final int page;
-  const FetchFeedEvent({this.page = 1});
+  final DiscoverFilters? filters;
+  const FetchFeedEvent({this.page = 1, this.filters});
 
   @override
-  List<Object?> get props => [page];
+  List<Object?> get props => [page, filters];
+}
+
+class FetchDailyMatchesEvent extends DiscoverEvent {
+  const FetchDailyMatchesEvent();
 }
 
 class SwipeProfileEvent extends DiscoverEvent {

@@ -39,3 +39,15 @@ class ToggleShortlistEvent extends ActivityEvent {
   @override
   List<Object?> get props => [targetUserId];
 }
+
+class FetchContactRequestsEvent extends ActivityEvent {
+  const FetchContactRequestsEvent();
+}
+
+class RespondContactRequestEvent extends ActivityEvent {
+  final String requestId;
+  final String action; // 'approve' | 'reject'
+  const RespondContactRequestEvent(this.requestId, this.action);
+  @override
+  List<Object?> get props => [requestId, action];
+}

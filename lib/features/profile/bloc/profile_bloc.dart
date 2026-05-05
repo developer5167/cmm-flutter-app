@@ -85,13 +85,23 @@ class ProfileBloc extends Bloc<ProfileEvent, ProfileState> {
   Future<void> _onUpdateSettings(UpdateSettingsEvent event, Emitter<ProfileState> emit) async {
     final previous = state is ProfileLoaded ? state as ProfileLoaded : null;
     try {
-      await _repository.updateSettings(event.settings);
-      add(const FetchProfileEvent(silentRefresh: true));
+      // PUT returns updated settings fields directly — merge them into local state
+      // to avoid a second GET /profile/me round-trip.
+      final updatedSettings = await _repository.updateSettings(event.settings);
+      if (previous != null && updatedSettings.isNotEmpty) {
+        final fullData = Map<String, dynamic>.from(previous.profile);
+        final profileSection = Map<String, dynamic>.from(
+          fullData['profile'] is Map ? fullData['profile'] as Map<String, dynamic> : {},
+        );
+        profileSection.addAll(updatedSettings);
+        fullData['profile'] = profileSection;
+        emit(ProfileLoaded(fullData, userId: previous.userId));
+      } else {
+        add(const FetchProfileEvent(silentRefresh: true));
+      }
     } catch (e) {
       if (previous != null) emit(previous);
-      else {
-        emit(ProfileError(e.toString()));
-      }
+      else emit(ProfileError(e.toString()));
     }
   }
 }

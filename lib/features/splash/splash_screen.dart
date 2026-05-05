@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:go_router/go_router.dart';
+import 'package:dio/dio.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text_styles.dart';
 import '../../core/storage/app_storage.dart';
-import '../profile/data/profile_repository.dart';
+import '../../core/network/dio_client.dart';
+import '../../core/constants/app_constants.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -18,7 +20,6 @@ class _SplashScreenState extends State<SplashScreen>
     with TickerProviderStateMixin {
   late AnimationController _glowController;
   late Animation<double> _glowAnimation;
-  final _profileRepo = ProfileRepository();
 
   @override
   void initState() {
@@ -53,17 +54,22 @@ class _SplashScreenState extends State<SplashScreen>
     
     if (token != null) {
       try {
-        // Refresh profile status on every launch
-        final profile = await _profileRepo.fetchMyProfile();
-        if (profile.containsKey('user')) {
-          final user = profile['user'];
-          if (user != null && user is Map) {
-            AppStorage.saveOnboardingComplete(user['is_onboarding_complete'] ?? false);
+        // Single bootstrap call — replaces the old GET /profile/me and also
+        // returns badge counts + subscription status for the app session.
+        final resp = await DioClient.instance.get(ApiEndpoints.appBootstrap);
+        final data = resp.data['data'];
+        if (data is Map) {
+          final user = data['user'];
+          if (user is Map) {
+            AppStorage.saveOnboardingComplete(
+                user['is_onboarding_complete'] ?? false);
             AppStorage.saveReviewStatus(user['review_status']?.toString());
           }
         }
+      } on DioException catch (e) {
+        debugPrint('Splash bootstrap error: ${e.message}');
       } catch (e) {
-        debugPrint('Splash Error: $e');
+        debugPrint('Splash error: $e');
       }
     }
 

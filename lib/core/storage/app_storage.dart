@@ -33,7 +33,14 @@ class AppStorage {
   static Future<String?> getUserId() =>
       _secure.read(key: StorageKeys.userId);
 
-  static Future<void> clearAll() => _secure.deleteAll();
+  static Future<void> clearAll() async {
+    await _secure.deleteAll();
+    if (_prefs.isOpen) {
+      await _prefs.delete(StorageKeys.onboardingStep);
+      await _prefs.delete(StorageKeys.onboardingComplete);
+      await _prefs.delete('review_status');
+    }
+  }
 
   // ─── Hive Boxes ───────────────────────────────────────────────
   static late Box _prefs;

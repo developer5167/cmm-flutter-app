@@ -20,12 +20,15 @@ class InterestsRepository {
     }
   }
 
-  Future<void> handleAction(String interestId, {required bool accept}) async {
+  /// Returns the response data map (e.g. `{conversation_id: "..."}` for accept).
+  Future<Map<String, dynamic>?> handleAction(String interestId, {required bool accept}) async {
     try {
-      final url = accept 
-          ? ApiEndpoints.acceptInterest(interestId) 
+      final url = accept
+          ? ApiEndpoints.acceptInterest(interestId)
           : ApiEndpoints.rejectInterest(interestId);
-      await _dio.post(url);
+      final resp = await _dio.post(url);
+      final data = resp.data['data'];
+      return data is Map<String, dynamic> ? data : null;
     } on DioException catch (e) {
       throw _handleError(e);
     }

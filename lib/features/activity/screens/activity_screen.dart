@@ -10,6 +10,7 @@ import '../../../core/utils/app_haptics.dart';
 import '../bloc/activity_bloc.dart';
 import '../bloc/activity_event.dart';
 import '../bloc/activity_state.dart';
+import 'package:intl/intl.dart';
 
 class ActivityScreen extends StatefulWidget {
   const ActivityScreen({super.key});
@@ -25,7 +26,7 @@ class _ActivityScreenState extends State<ActivityScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 4, vsync: this);
     context.read<ActivityBloc>().add(const FetchActivityEvent());
   }
 
@@ -63,15 +64,18 @@ class _ActivityScreenState extends State<ActivityScreen>
             ],
             bottom: TabBar(
               controller: _tabController,
+              isScrollable: true,
+              tabAlignment: TabAlignment.start,
               indicatorColor: AppColors.gold,
               labelColor: AppColors.gold,
               unselectedLabelColor: AppColors.textSecondary,
               labelStyle: AppTextStyles.labelMedium,
               dividerColor: AppColors.surfaceHighest,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
               tabs: [
                 Tab(
                   child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
+                    mainAxisSize: MainAxisSize.min,
                     children: [
                       const Text('Notifications'),
                       if (unread > 0) ...[
@@ -83,6 +87,28 @@ class _ActivityScreenState extends State<ActivityScreen>
                 ),
                 const Tab(text: 'Views'),
                 const Tab(text: 'Shortlisted'),
+                Tab(
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text('Contacts'),
+                      Builder(builder: (context) {
+                        final pendingCount = loaded?.contactRequests
+                                .where((r) => r['status'] == 'pending')
+                                .length ??
+                            0;
+                        if (pendingCount == 0) return const SizedBox.shrink();
+                        return Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const SizedBox(width: 6),
+                            _badge(pendingCount),
+                          ],
+                        );
+                      }),
+                    ],
+                  ),
+                ),
               ],
             ),
           ),
@@ -111,6 +137,15 @@ class _ActivityScreenState extends State<ActivityScreen>
                           profiles: loaded?.shortlists ?? [],
                           onRefresh: () {
                             context.read<ActivityBloc>().add(const FetchShortlistsEvent());
+                          },
+                        ),
+                        _ContactRequestsTab(
+                          requests: loaded?.contactRequests ?? [],
+                          onRefresh: () {
+                            context.read<ActivityBloc>().add(const FetchContactRequestsEvent());
+                          },
+                          onRespond: (id, action) {
+                            context.read<ActivityBloc>().add(RespondContactRequestEvent(id, action));
                           },
                         ),
                       ],
@@ -640,4 +675,165 @@ Widget _emptyState({required IconData icon, required String title, required Stri
       ),
     ),
   );
+}
+
+// ─── Contacts Tab ─────────────────────────────────────────────
+class _ContactRequestsTab extends StatelessWidget {
+  final List<Map<String, dynamic>> requests;
+  final VoidCallback onRefresh;
+  final void Function(String id, String action) onRespond;
+
+  const _ContactRequestsTab({
+    required this.requests,
+    required this.onRefresh,
+    required this.onRespond,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (requests.isEmpty) {
+      return _emptyState(
+        icon: Icons.contacts_rounded,
+        title: 'No Contact Requests',
+        subtitle: "When someone requests your contact details, they'll appear here.",
+      );
+    }
+
+    return RefreshIndicator(
+      color: AppColors.gold,
+      onRefresh: () async => onRefresh(),
+      child: ListView.builder(
+        padding: const EdgeInsets.all(16),
+        itemCount: requests.length,
+        itemBuilder: (context, i) {
+          final r = requests[i];
+          final status = r['status'] as String? ?? 'pending';
+          final name   = r['first_name'] as String? ?? 'Someone';
+          final photo  = r['primary_photo'] as String?;
+          final userId = r['user_id']?.toString();
+          final reqAt = r['requested_at'] ?? r['created_at'];
+          final date   = reqAt != null
+              ? DateFormat('dd MMM').format(DateTime.parse(reqAt.toString()))
+              : '';
+          final id = r['id']?.toString() ?? '';
+
+          return Material(
+            color: Colors.transparent,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(18),
+              onTap: userId == null
+                  ? null
+                  : () {
+                      AppHaptics.selection();
+                      context.push('/profile/$userId?source=activity');
+                    },
+              child: Container(
+                margin: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceElevated,
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(
+                    color: status == 'pending'
+                        ? AppColors.goldMild
+                        : status == 'approved'
+                            ? Colors.green.withAlpha(80)
+                            : AppColors.surfaceHighest,
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    // Avatar
+                    CircleAvatar(
+                      radius: 28,
+                      backgroundColor: AppColors.surface,
+                      backgroundImage: photo != null ? CachedNetworkImageProvider(photo) : null,
+                      child: photo == null ? const Icon(Icons.person, color: AppColors.textTertiary) : null,
+                    ),
+                    const SizedBox(width: 14),
+                    // Info
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(name, style: AppTextStyles.labelLarge),
+                          const SizedBox(height: 2),
+                          Text(
+                            '${r['profession'] ?? ''} ${r['denomination'] != null ? '· ${r['denomination']}' : ''}'.trim(),
+                            style: AppTextStyles.labelSmall.copyWith(color: AppColors.textSecondary),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 4),
+                          Text(date, style: AppTextStyles.overline.copyWith(color: AppColors.textTertiary)),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    // Action area
+                    if (status == 'pending')
+                      Row(
+                        children: [
+                          // Decline
+                          GestureDetector(
+                            onTap: () {
+                              AppHaptics.light();
+                              onRespond(id, 'reject');
+                            },
+                            child: Container(
+                              width: 40,
+                              height: 40,
+                              decoration: BoxDecoration(
+                                color: AppColors.error.withAlpha(20),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: AppColors.error.withAlpha(60)),
+                              ),
+                              child: const Icon(Icons.close_rounded, color: AppColors.error, size: 20),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          // Approve
+                          GestureDetector(
+                            onTap: () {
+                              AppHaptics.heavy();
+                              onRespond(id, 'approve');
+                            },
+                            child: Container(
+                              width: 40,
+                              height: 40,
+                              decoration: BoxDecoration(
+                                color: Colors.green.withAlpha(25),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: Colors.green.withAlpha(80)),
+                              ),
+                              child: const Icon(Icons.check_rounded, color: Colors.green, size: 20),
+                            ),
+                          ),
+                        ],
+                      )
+                    else
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: status == 'approved'
+                              ? Colors.green.withAlpha(25)
+                              : AppColors.surfaceHighest,
+                          borderRadius: BorderRadius.circular(100),
+                        ),
+                        child: Text(
+                          status == 'approved' ? 'Shared' : 'Declined',
+                          style: AppTextStyles.overline.copyWith(
+                            color: status == 'approved' ? Colors.green : AppColors.textTertiary,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ).animate().fadeIn(delay: Duration(milliseconds: i * 60));
+        },
+      ),
+    );
+  }
 }

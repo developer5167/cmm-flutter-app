@@ -1,6 +1,8 @@
+import 'dart:math' show pi;
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/storage/app_storage.dart';
@@ -18,6 +20,12 @@ class MyProfileScreen extends StatefulWidget {
 }
 
 class _MyProfileScreenState extends State<MyProfileScreen> {
+  Future<void> _refreshProfile() async {
+    context.read<ProfileBloc>().add(const FetchProfileEvent(silentRefresh: true));
+    // Give the bloc/network a brief window; UI state updates through BlocBuilder.
+    await Future.delayed(const Duration(milliseconds: 500));
+  }
+
   @override
   void initState() {
     super.initState();
@@ -75,12 +83,21 @@ class _MyProfileScreenState extends State<MyProfileScreen> {
         final hasPending = photos.any((p) => p is Map && p['review_status'] == 'pending');
         final isVerified = profile['is_id_verified'] ?? profile['trust_badge'] ?? false;
         final hasVideo = profile['video_selfie_url'] != null;
+        final completionScore = (profile['profile_completion_score'] as num?)?.toInt() ?? 0;
+        final subscription = data['subscription'] as Map<String, dynamic>? ?? const {};
+        final isPremium = subscription['is_premium'] == true;
+        final planName = subscription['plan_name']?.toString();
 
         return Scaffold(
           backgroundColor: AppColors.background,
           body: SafeArea(
-            child: CustomScrollView(
-              slivers: [
+            child: RefreshIndicator(
+              color: AppColors.gold,
+              backgroundColor: AppColors.surfaceElevated,
+              onRefresh: _refreshProfile,
+              child: CustomScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                slivers: [
                 SliverAppBar(
                   backgroundColor: AppColors.background,
                   pinned: true,
@@ -105,25 +122,65 @@ class _MyProfileScreenState extends State<MyProfileScreen> {
                       children: [
                         const SizedBox(height: 20),
                         Center(
-                          child: Stack(
-                            children: [
-                              Container(
-                                width: 120,
-                                height: 120,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  border: Border.all(color: AppColors.goldMild, width: 2),
-                                  color: AppColors.surfaceElevated,
-                                  image: photoUrl != null 
-                                    ? DecorationImage(image: NetworkImage(photoUrl), fit: BoxFit.cover)
-                                    : null,
+                          child: SizedBox(
+                            width: 136,
+                            height: 136,
+                            child: Stack(
+                              alignment: Alignment.center,
+                              children: [
+                                // Completion ring
+                                SizedBox.expand(
+                                  child: CustomPaint(
+                                    painter: _ScoreRingPainter(
+                                      score: completionScore,
+                                      trackColor: AppColors.surfaceHighest,
+                                      fillColor: completionScore >= 80
+                                          ? const Color(0xFF4CAF50)
+                                          : completionScore >= 50
+                                              ? AppColors.gold
+                                              : const Color(0xFFEF5350),
+                                    ),
+                                  ),
                                 ),
-                                child: photoUrl == null 
-                                  ? const Center(child: Icon(Icons.person, size: 60, color: AppColors.textTertiary))
-                                  : null,
-                              ),
-
-                            ],
+                                // Avatar inside ring
+                                Container(
+                                  width: 116,
+                                  height: 116,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: AppColors.surfaceElevated,
+                                    image: photoUrl != null
+                                        ? DecorationImage(
+                                            image: CachedNetworkImageProvider(photoUrl),
+                                            fit: BoxFit.cover)
+                                        : null,
+                                  ),
+                                  child: photoUrl == null
+                                      ? const Icon(Icons.person, size: 56, color: AppColors.textTertiary)
+                                      : null,
+                                ),
+                                // Score badge bottom-right
+                                Positioned(
+                                  bottom: 4,
+                                  right: 4,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                                    decoration: BoxDecoration(
+                                      color: AppColors.background,
+                                      borderRadius: BorderRadius.circular(20),
+                                      border: Border.all(color: AppColors.goldMild),
+                                    ),
+                                    child: Text(
+                                      '$completionScore%',
+                                      style: AppTextStyles.overline.copyWith(
+                                        color: AppColors.gold,
+                                        fontWeight: FontWeight.w900,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                         const SizedBox(height: 16),
@@ -175,6 +232,31 @@ class _MyProfileScreenState extends State<MyProfileScreen> {
                           ],
                         ),
 
+                        // Profile completion nudge card
+                        if (completionScore < 100) ...[
+                          const SizedBox(height: 16),
+                          _ProfileCompletionCard(
+                            score: completionScore,
+                            profile: profile,
+                            hasPhotos: photos.isNotEmpty,
+                            hasVideo: hasVideo,
+                            isVerified: isVerified is bool ? isVerified : false,
+                            onTap: (extra) {
+                              // Verify identity chip should open govt ID upload screen directly.
+                              if (extra == -1) {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => const IdentityVerificationScreen(),
+                                  ),
+                                );
+                                return;
+                              }
+                              context.push('/onboarding', extra: extra);
+                            },
+                          ),
+                        ],
+
                         if (hasVideo) ...[
                           const SizedBox(height: 12),
                           Container(
@@ -203,30 +285,49 @@ class _MyProfileScreenState extends State<MyProfileScreen> {
 
                         const SizedBox(height: 32),
                         
-                        Container(
-                          padding: const EdgeInsets.all(20),
-                          decoration: BoxDecoration(
-                            gradient: AppColors.goldenGradient,
+                        Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            onTap: () => context.push('/subscription'),
                             borderRadius: BorderRadius.circular(20),
-                            boxShadow: [
-                              BoxShadow(color: AppColors.gold.withAlpha(40), blurRadius: 16, offset: const Offset(0, 4))
-                            ]
-                          ),
-                          child: Row(
-                            children: [
-                              const Icon(Icons.workspace_premium_rounded, size: 40, color: AppColors.textOnGold),
-                              const SizedBox(width: 16),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
+                            child: Ink(
+                              decoration: BoxDecoration(
+                                gradient: AppColors.goldenGradient,
+                                borderRadius: BorderRadius.circular(20),
+                                boxShadow: [
+                                  BoxShadow(color: AppColors.gold.withAlpha(40), blurRadius: 16, offset: const Offset(0, 4)),
+                                ],
+                              ),
+                              child: Padding(
+                                padding: const EdgeInsets.all(20),
+                                child: Row(
                                   children: [
-                                    Text('GraceMatch Free', style: AppTextStyles.labelLarge.copyWith(color: AppColors.textOnGold)),
-                                    Text('Upgrade for 5x more matches', style: AppTextStyles.labelSmall.copyWith(color: AppColors.surface)),
+                                    const Icon(Icons.workspace_premium_rounded, size: 40, color: AppColors.textOnGold),
+                                    const SizedBox(width: 16),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            isPremium
+                                                ? 'GraceMatch ${planName != null ? '${planName[0].toUpperCase()}${planName.substring(1)}' : 'Premium'}'
+                                                : 'GraceMatch Free',
+                                            style: AppTextStyles.labelLarge.copyWith(color: AppColors.textOnGold),
+                                          ),
+                                          Text(
+                                            isPremium
+                                                ? 'Subscription active'
+                                                : 'Upgrade for 5x more matches',
+                                            style: AppTextStyles.labelSmall.copyWith(color: AppColors.surface),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    const Icon(Icons.arrow_forward_ios_rounded, size: 16, color: AppColors.textOnGold),
                                   ],
                                 ),
                               ),
-                              const Icon(Icons.arrow_forward_ios_rounded, size: 16, color: AppColors.textOnGold),
-                            ],
+                            ),
                           ),
                         ),
                         
@@ -298,7 +399,8 @@ class _MyProfileScreenState extends State<MyProfileScreen> {
                     ),
                   ),
                 ),
-              ],
+                ],
+              ),
             ),
           ),
         );
@@ -459,7 +561,7 @@ class _MyProfileScreenState extends State<MyProfileScreen> {
             border: Border.all(color: borderColor, width: 2),
             color: AppColors.surface,
             image: url.isNotEmpty
-                ? DecorationImage(image: NetworkImage(url), fit: BoxFit.cover)
+                ? DecorationImage(image: CachedNetworkImageProvider(url), fit: BoxFit.cover)
                 : null,
           ),
           child: url.isEmpty
@@ -566,5 +668,155 @@ class _MyProfileScreenState extends State<MyProfileScreen> {
       ),
     );
   }
+}
+
+// ─── Score Ring Painter ───────────────────────────────────────
+class _ScoreRingPainter extends CustomPainter {
+  final int score;
+  final Color trackColor;
+  final Color fillColor;
+
+  const _ScoreRingPainter({
+    required this.score,
+    required this.trackColor,
+    required this.fillColor,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const strokeWidth = 5.0;
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = (size.width - strokeWidth) / 2;
+    const startAngle = -pi / 2;
+
+    // Track
+    canvas.drawCircle(
+      center,
+      radius,
+      Paint()
+        ..color = trackColor
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = strokeWidth,
+    );
+
+    // Arc
+    if (score > 0) {
+      canvas.drawArc(
+        Rect.fromCircle(center: center, radius: radius),
+        startAngle,
+        2 * pi * (score / 100),
+        false,
+        Paint()
+          ..color = fillColor
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = strokeWidth
+          ..strokeCap = StrokeCap.round,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(_ScoreRingPainter old) =>
+      old.score != score || old.fillColor != fillColor;
+}
+
+// ─── Profile Completion Nudge Card ───────────────────────────
+class _ProfileCompletionCard extends StatelessWidget {
+  final int score;
+  final Map<String, dynamic> profile;
+  final bool hasPhotos;
+  final bool hasVideo;
+  final bool isVerified;
+  final void Function(int step) onTap;
+
+  const _ProfileCompletionCard({
+    required this.score,
+    required this.profile,
+    required this.hasPhotos,
+    required this.hasVideo,
+    required this.isVerified,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final missing = <_MissingItem>[];
+    if (!hasPhotos)                      missing.add(_MissingItem('Add a photo', 7));
+    if (profile['denomination'] == null) missing.add(_MissingItem('Add denomination', 1));
+    if (profile['profession'] == null)   missing.add(_MissingItem('Add profession', 2));
+    if (profile['bio'] == null || (profile['bio'] as String?)?.isEmpty == true)
+                                         missing.add(_MissingItem('Write a bio', 2));
+    if (profile['church_name'] == null)  missing.add(_MissingItem('Add church name', 1));
+    // Use -1 as special action: open govt ID proof upload screen directly.
+    if (!isVerified)                     missing.add(_MissingItem('Verify identity', -1));
+
+    if (missing.isEmpty) return const SizedBox.shrink();
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceElevated,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppColors.goldMild.withAlpha(120)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.bar_chart_rounded, color: AppColors.gold, size: 18),
+              const SizedBox(width: 8),
+              Text('Profile $score% Complete', style: AppTextStyles.labelLarge),
+              const Spacer(),
+              Text('${missing.length} left', style: AppTextStyles.labelSmall.copyWith(color: AppColors.textSecondary)),
+            ],
+          ),
+          const SizedBox(height: 10),
+          // Progress bar
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(
+              value: score / 100,
+              backgroundColor: AppColors.surfaceHighest,
+              valueColor: AlwaysStoppedAnimation<Color>(
+                score >= 80 ? const Color(0xFF4CAF50) : AppColors.gold,
+              ),
+              minHeight: 6,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: missing.take(3).map((item) => GestureDetector(
+              onTap: () => onTap(item.step),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: AppColors.goldSubtle,
+                  borderRadius: BorderRadius.circular(100),
+                  border: Border.all(color: AppColors.goldMild),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.add_rounded, color: AppColors.gold, size: 14),
+                    const SizedBox(width: 4),
+                    Text(item.label, style: AppTextStyles.overline.copyWith(color: AppColors.gold)),
+                  ],
+                ),
+              ),
+            )).toList(),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MissingItem {
+  final String label;
+  final int step;
+  const _MissingItem(this.label, this.step);
 }
 

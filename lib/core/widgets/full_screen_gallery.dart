@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import '../../core/theme/app_colors.dart';
 
 class FullScreenGallery extends StatefulWidget {
@@ -57,15 +58,12 @@ class _FullScreenGalleryState extends State<FullScreenGallery> {
                 minScale: 1.0,
                 maxScale: 4.0,
                 child: Center(
-                  child: Image.network(
-                    widget.images[index],
+                  child: CachedNetworkImage(
+                    imageUrl: widget.images[index],
                     fit: BoxFit.contain,
                     width: double.infinity,
-                    loadingBuilder: (context, child, loadingProgress) {
-                      if (loadingProgress == null) return child;
-                      return const Center(child: CircularProgressIndicator(color: AppColors.gold));
-                    },
-                    errorBuilder: (context, error, stackTrace) => const Icon(Icons.broken_image, color: Colors.white, size: 50),
+                    placeholder: (_, __) => const Center(child: CircularProgressIndicator(color: AppColors.gold)),
+                    errorWidget: (_, __, ___) => const Icon(Icons.broken_image, color: Colors.white, size: 50),
                   ),
                 ),
               );

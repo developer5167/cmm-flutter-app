@@ -22,6 +22,9 @@ class ActivityLoaded extends ActivityState {
   // Shortlists
   final List<Map<String, dynamic>> shortlists;
 
+  // Incoming contact requests
+  final List<Map<String, dynamic>> contactRequests;
+
   const ActivityLoaded({
     this.notifications = const [],
     this.unreadNotifications = 0,
@@ -29,6 +32,7 @@ class ActivityLoaded extends ActivityState {
     this.totalViews = 0,
     this.viewsPremiumRequired = false,
     this.shortlists = const [],
+    this.contactRequests = const [],
   });
 
   ActivityLoaded copyWith({
@@ -38,6 +42,7 @@ class ActivityLoaded extends ActivityState {
     int? totalViews,
     bool? viewsPremiumRequired,
     List<Map<String, dynamic>>? shortlists,
+    List<Map<String, dynamic>>? contactRequests,
   }) {
     return ActivityLoaded(
       notifications: notifications ?? this.notifications,
@@ -46,6 +51,7 @@ class ActivityLoaded extends ActivityState {
       totalViews: totalViews ?? this.totalViews,
       viewsPremiumRequired: viewsPremiumRequired ?? this.viewsPremiumRequired,
       shortlists: shortlists ?? this.shortlists,
+      contactRequests: contactRequests ?? this.contactRequests,
     );
   }
 
@@ -57,6 +63,7 @@ class ActivityLoaded extends ActivityState {
         totalViews,
         viewsPremiumRequired,
         shortlists,
+        contactRequests,
       ];
 }
 

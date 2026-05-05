@@ -61,18 +61,32 @@ class ApiEndpoints {
   static String notificationRead(String id) => '/notifications/$id/read';
 
   // Activity
+  static const String activityBootstrap = '/activity/bootstrap'; // single call for entire tab
   static const String activitySummary = '/activity/summary';
   static const String activityViews = '/activity/views';
   static const String activityShortlists = '/activity/shortlists';
   static const String activityShortlistsCheck = '/activity/shortlists/check';
 
-  // Premium
+  // Premium / Contact reveal
   static const String spotlight = '/premium/spotlight';
   static const String contactRequest = '/premium/contact-request';
+  static String contactStatus(String targetUserId) => '/premium/contact-status/$targetUserId';
+  static const String contactRespond = '/premium/contact-request'; // /:id/respond appended in repo
+  static String contactRespondAction(String id) => '/premium/contact-request/$id/respond';
+  static const String contactRequestsIncoming = '/premium/contact-requests/incoming';
 
   // Growth
   static const String successStories = '/growth/success-stories';
   static const String analytics = '/growth/analytics';
+
+  // App-level bootstrap (single call on launch)
+  static const String appBootstrap = '/bootstrap';
+
+  // Discover
+  static const String dailyMatches = '/discover/daily-matches';
+
+  // Subscription payment
+  static const String razorpayVerify = '/subscriptions/razorpay/verify';
 }
 
 class StorageKeys {

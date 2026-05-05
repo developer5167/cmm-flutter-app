@@ -10,6 +10,9 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
   final SocketService _socketService;
 
   String? _currentConversationId;
+  // Keep latest conversation list so we can update previews/unread counts
+  // even while the state is MessagesLoaded (inside a chat screen).
+  List<Map<String, dynamic>> _conversationCache = [];
 
   // Track IDs of messages we sent via HTTP so we don't double-add them
   // if the backend ever echoes them back through the socket.
@@ -67,6 +70,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     emit(ChatLoading());
     try {
       final conversations = await _repository.fetchConversations();
+      _conversationCache = List<Map<String, dynamic>>.from(conversations);
       emit(ConversationsLoaded(conversations));
     } catch (e) {
       emit(ChatError(e.toString()));
@@ -83,9 +87,20 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
       final tagged = messages.map((m) {
         if (m.containsKey('_status')) return m;
         final isRead = m['is_read'] == true;
-        return <String, dynamic>{...m, '_status': isRead ? 'read' : 'sent'};
+        final isDelivered = m['delivered_at'] != null;
+        return <String, dynamic>{
+          ...m,
+          '_status': isRead
+              ? 'read'
+              : isDelivered
+                  ? 'delivered'
+                  : 'sent',
+        };
       }).toList();
       emit(MessagesLoaded(tagged));
+      // Ensure backend emits read receipts for any unread incoming messages
+      // that existed before opening this chat.
+      unawaited(_repository.markRead(event.conversationId));
     } catch (e) {
       emit(ChatError(e.toString()));
     }
@@ -133,6 +148,19 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
         return m;
       }).toList();
       emit(MessagesLoaded(List<Map<String, dynamic>>.from(updated)));
+
+      // Also update conversation preview immediately for sender.
+      _applyConversationPreview(
+        conversationId: event.conversationId,
+        message: <String, dynamic>{
+          'content': sentMsg['content'] ?? event.text,
+          'message_type': sentMsg['message_type'] ?? 'text',
+          'sender_id': sentMsg['sender_id'] ?? event.myUserId,
+          'created_at': sentMsg['created_at'] ?? DateTime.now().toUtc().toIso8601String(),
+          'is_read': false,
+        },
+        incrementUnread: false,
+      );
     } catch (e) {
       // Mark as failed so user knows to retry
       if (state is! MessagesLoaded) return;
@@ -177,11 +205,60 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
       if (msgConvId != null) {
         _repository.markRead(msgConvId);
       }
-    } else if (state is ConversationsLoaded || state is ChatInitial) {
-      // User is on the conversations list — refresh badge/preview
-      add(FetchConversationsEvent());
+    } else {
+      // Update conversation preview for every state except current-open-chat case.
+      // This fixes missing unread/last-message updates when user is inside a
+      // different chat screen (state == MessagesLoaded).
+      _applyConversationPreview(
+        conversationId: msgConvId,
+        message: <String, dynamic>{
+          'content': msg['content'],
+          'message_type': msg['message_type'] ?? 'text',
+          'sender_id': msg['sender_id'],
+          'created_at': msg['created_at'],
+          'is_read': false,
+        },
+        incrementUnread: true,
+      );
+
+      if (state is ChatInitial) {
+        add(FetchConversationsEvent());
+      }
+      if (_conversationCache.isEmpty) {
+        add(FetchConversationsEvent());
+      }
     }
-    // If in a different conversation's screen — do nothing (push notification handles it)
+  }
+
+  void _applyConversationPreview({
+    required String? conversationId,
+    required Map<String, dynamic> message,
+    required bool incrementUnread,
+  }) {
+    if (conversationId == null || conversationId.isEmpty) return;
+    if (_conversationCache.isEmpty) return;
+
+    final convs = List<Map<String, dynamic>>.from(_conversationCache);
+    final idx = convs.indexWhere(
+      (c) => c['conversation_id']?.toString() == conversationId,
+    );
+    if (idx < 0) return;
+
+    final updated = Map<String, dynamic>.from(convs[idx]);
+    updated['last_message'] = message;
+    updated['last_message_at'] = message['created_at'];
+    if (incrementUnread) {
+      updated['unread_count'] =
+          ((updated['unread_count'] as num?)?.toInt() ?? 0) + 1;
+    }
+    convs[idx] = updated;
+    final item = convs.removeAt(idx);
+    convs.insert(0, item);
+    _conversationCache = convs;
+
+    if (state is ConversationsLoaded) {
+      emit(ConversationsLoaded(List<Map<String, dynamic>>.from(_conversationCache)));
+    }
   }
 
   // ── Delivered receipt (receiver was online when we sent) ──────

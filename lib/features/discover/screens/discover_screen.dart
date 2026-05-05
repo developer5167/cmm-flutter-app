@@ -2,15 +2,17 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/utils/app_haptics.dart';
-import '../../../core/constants/app_constants.dart';
 import '../widgets/profile_card.dart';
 import '../widgets/action_buttons.dart';
+import '../widgets/discover_filter_sheet.dart';
 import '../bloc/discover_bloc.dart';
 import '../bloc/discover_event.dart';
 import '../bloc/discover_state.dart';
+import '../bloc/discover_filters.dart';
 
 class DiscoverScreen extends StatefulWidget {
   const DiscoverScreen({super.key});
@@ -32,10 +34,8 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
 
   void _onSwipe(bool liked, {bool superLike = false}) async {
     if (_isAnimatingOut || _currentIndex >= _profiles.length) return;
-    
+
     final currentProfile = _profiles[_currentIndex];
-    
-    // Dispatch swipe event
     context.read<DiscoverBloc>().add(SwipeProfileEvent(
       targetUserId: currentProfile['id'].toString(),
       isInterest: liked,
@@ -56,12 +56,21 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
     setState(() {
       _isAnimatingOut = false;
       _currentIndex++;
-      
-      // If nearing end, could fetch more
-      if (_currentIndex >= _profiles.length - 2) {
-        // context.read<DiscoverBloc>().add(FetchFeedEvent(page: ...));
-      }
     });
+  }
+
+  Future<void> _openFilterSheet(DiscoverFilters current) async {
+    AppHaptics.light();
+    final result = await showModalBottomSheet<DiscoverFilters>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => DiscoverFilterSheet(currentFilters: current),
+    );
+    if (result != null && mounted) {
+      setState(() => _currentIndex = 0);
+      context.read<DiscoverBloc>().add(FetchFeedEvent(filters: result));
+    }
   }
 
   @override
@@ -84,6 +93,11 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
           );
         }
 
+        final activeFilters = state is DiscoverLoaded
+            ? state.activeFilters
+            : DiscoverFilters.defaults();
+        final dailyMatches = state is DiscoverLoaded ? state.dailyMatches : <Map<String, dynamic>>[];
+
         if (state is DiscoverLoaded) {
           _profiles = state.profiles;
         }
@@ -96,7 +110,8 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
             bottom: false,
             child: Column(
               children: [
-                _buildHeader(),
+                _buildHeader(activeFilters),
+                if (dailyMatches.isNotEmpty) _buildDailyMatches(dailyMatches),
                 Expanded(
                   child: hasProfiles
                       ? Stack(
@@ -142,7 +157,8 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
     );
   }
 
-  Widget _buildHeader() {
+  Widget _buildHeader(DiscoverFilters activeFilters) {
+    final hasFilters = !activeFilters.isDefault;
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 16, 24, 8),
       child: Row(
@@ -159,27 +175,148 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
           ),
           const Spacer(),
           GestureDetector(
-            onTap: () async {
-              AppHaptics.light();
-              await context.push('/onboarding', extra: 5); // Step 6: Preferences
-              if (mounted) {
-                context.read<DiscoverBloc>().add(const FetchFeedEvent());
-              }
-            },
-            child: Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: AppColors.surfaceElevated,
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: AppColors.surfaceHighest),
-              ),
-              child: const Icon(Icons.tune_rounded,
-                  color: AppColors.gold, size: 20),
+            onTap: () => _openFilterSheet(activeFilters),
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: hasFilters ? AppColors.goldSubtle : AppColors.surfaceElevated,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: hasFilters ? AppColors.gold : AppColors.surfaceHighest,
+                    ),
+                  ),
+                  child: Icon(Icons.tune_rounded,
+                      color: hasFilters ? AppColors.gold : AppColors.gold, size: 20),
+                ),
+                if (hasFilters)
+                  Positioned(
+                    top: -3,
+                    right: -3,
+                    child: Container(
+                      width: 10,
+                      height: 10,
+                      decoration: const BoxDecoration(
+                        color: AppColors.gold,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                  ),
+              ],
             ),
           ),
         ],
       ).animate().fadeIn(duration: 400.ms),
     );
+  }
+
+  // ── Today's Picks ─────────────────────────────────────────────
+  Widget _buildDailyMatches(List<Map<String, dynamic>> matches) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(24, 8, 24, 12),
+          child: Row(
+            children: [
+              const Icon(Icons.auto_awesome, color: AppColors.gold, size: 16),
+              const SizedBox(width: 8),
+              Text("Today's Picks",
+                  style: AppTextStyles.labelLarge.copyWith(color: AppColors.gold)),
+              const SizedBox(width: 6),
+              Text('· ${matches.length} curated for you',
+                  style: AppTextStyles.bodySmall.copyWith(color: AppColors.textTertiary)),
+            ],
+          ),
+        ),
+        SizedBox(
+          height: 88,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            itemCount: matches.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 12),
+            itemBuilder: (ctx, i) {
+              final m = matches[i];
+              final photo = m['primary_photo'] as String?;
+              final name  = m['first_name'] as String? ?? '?';
+              final compat = m['compatibility'] as int? ?? 0;
+              final uid   = m['user_id']?.toString() ?? m['id']?.toString() ?? '';
+              return GestureDetector(
+                onTap: () {
+                  if (uid.isNotEmpty) context.push('/profile/$uid');
+                },
+                child: Column(
+                  children: [
+                    Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        Container(
+                          width: 56,
+                          height: 56,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            border: Border.all(color: AppColors.gold, width: 2),
+                          ),
+                          child: ClipOval(
+                            child: photo != null
+                                ? CachedNetworkImage(
+                                    imageUrl: photo,
+                                    fit: BoxFit.cover,
+                                    placeholder: (_, __) =>
+                                        Container(color: AppColors.surfaceHighest),
+                                    errorWidget: (_, __, ___) =>
+                                        const Icon(Icons.person, color: AppColors.gold),
+                                  )
+                                : Container(
+                                    color: AppColors.surfaceHighest,
+                                    child: const Icon(Icons.person, color: AppColors.gold),
+                                  ),
+                          ),
+                        ),
+                        Positioned(
+                          bottom: -2,
+                          right: -2,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: AppColors.gold,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              '$compat%',
+                              style: const TextStyle(
+                                fontSize: 9,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.textOnGold,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    SizedBox(
+                      width: 60,
+                      child: Text(
+                        name,
+                        style: AppTextStyles.bodySmall,
+                        textAlign: TextAlign.center,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+        const SizedBox(height: 8),
+      ],
+    ).animate().fadeIn(delay: 200.ms, duration: 400.ms);
   }
 
   Widget _buildEmptyState() {
@@ -189,14 +326,13 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
         children: [
           const Text('✝', style: TextStyle(fontSize: 56, color: AppColors.goldMild)),
           const SizedBox(height: 16),
-          Text("You've seen everyone for now",
-              style: AppTextStyles.headlineSmall),
+          Text("You've seen everyone for now", style: AppTextStyles.headlineSmall),
           const SizedBox(height: 8),
-          Text('Check back tomorrow for new matches',
-              style: AppTextStyles.bodyMedium),
+          Text('Check back tomorrow for new matches', style: AppTextStyles.bodyMedium),
           const SizedBox(height: 24),
           TextButton(
-            onPressed: () => context.read<DiscoverBloc>().add(const FetchFeedEvent()),
+            onPressed: () =>
+                context.read<DiscoverBloc>().add(const FetchFeedEvent()),
             child: const Text('Refresh Feed', style: TextStyle(color: AppColors.gold)),
           ),
         ],
@@ -204,4 +340,3 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
     );
   }
 }
-
